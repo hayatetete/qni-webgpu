@@ -175,7 +175,7 @@ const defaultStatePopupProbeGeometry = (
   }
 }
 
-test('dropping and clicking a placed gate do not paint persistent outer chrome', async ({ page }) => {
+test('clicking a placed gate paints selection chrome without selecting a palette drop', async ({ page }) => {
   await page.goto('/')
   await waitForStartupReady(page, { waitForStateVector: true })
 
@@ -202,7 +202,7 @@ test('dropping and clicking a placed gate do not paint persistent outer chrome',
 
   expect({ afterDropIsBlue, afterClickIsBlue }).toEqual({
     afterDropIsBlue: false,
-    afterClickIsBlue: false,
+    afterClickIsBlue: true,
   })
 })
 

@@ -50,6 +50,7 @@ impl DragController {
                 drag,
                 starts_live_display_snap,
             } => {
+                app.select_gate_for_copy(drag.id);
                 if app.library.active_locked() {
                     return false;
                 }

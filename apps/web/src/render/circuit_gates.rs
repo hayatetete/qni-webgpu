@@ -160,6 +160,16 @@ impl QniApp {
                     egui::StrokeKind::Inside,
                 );
             }
+            if !fast_drag && self.selected_gate_ids.contains(&gate.id) {
+                // Flexoki blue-600 via the semantic-on theme role. This
+                // persistent selection ring is distinct from purple hover.
+                painter.rect_stroke(
+                    body_rect.expand(4.0),
+                    hover_frame_corner_radius(gate.kind),
+                    egui::Stroke::new(2.0_f32, colors.semantic_on),
+                    egui::StrokeKind::Inside,
+                );
+            }
             if matches!(gate.kind, GateKind::Write0 | GateKind::Write1) {
                 // Write gates have no fill, so the wire would otherwise show
                 // through the brackets. Mask just the wire under the gate.
