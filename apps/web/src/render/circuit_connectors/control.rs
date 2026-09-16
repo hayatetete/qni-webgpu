@@ -9,6 +9,7 @@ use crate::simulation_plan::ColumnAnalysis;
 
 use super::super::circuit::gate_slot_index_for_render;
 use super::draw_vertical_connector;
+use crate::shared::now_seconds;
 
 // The anti-control icon is a hollow 40px-gate glyph; split the vertical
 // connector through its hollow center while leaving the line visible between
@@ -28,6 +29,14 @@ pub(super) fn draw_control_connectors(
     });
 
     for column in analysis.columns() {
+        let now = now_seconds();
+        if column
+            .gates()
+            .iter()
+            .all(|gate| app.paste_gate_hidden(gate.id, now))
+        {
+            continue;
+        }
         let mut controls = Vec::new();
         let mut targets = Vec::new();
         let mut anti_control_gaps = Vec::new();
@@ -74,7 +83,12 @@ pub(super) fn draw_control_connectors(
         // this render column after their preview center is on the real slot;
         // insert previews stay out so the connector never drifts away from a
         // transparent Control / AntiControl body.
-        let x = circuit_origin.x + metrics.slot_centers[column.slot];
+        let motion_x = column
+            .gates()
+            .first()
+            .and_then(|gate| app.circuit_motion_offset_x(gate.id, now))
+            .unwrap_or_default();
+        let x = circuit_origin.x + metrics.slot_centers[column.slot] + motion_x;
         let color = app.connector_color(column.gates().iter().map(|gate| gate.id), colors);
         for (start_y, end_y) in connector_segments(min_y, max_y, &anti_control_gaps) {
             draw_vertical_connector(painter, x, start_y, end_y, color);

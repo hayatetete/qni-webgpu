@@ -5,7 +5,7 @@
 //! column/wire coordinates, keeping this layer independent from egui and GPU
 //! state.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use super::{CircuitColumnIndex, GateId, GateIdAllocator, PlacedGate, WireIndex};
@@ -16,7 +16,56 @@ use crate::shared::now_seconds;
 
 const COPY_FLASH_SECS: f64 = 0.18;
 const PASTE_FLASH_SECS: f64 = 0.5;
+const PASTE_REVEAL_DELAY_SECS: f64 = CIRCUIT_MOTION_SECS + 0.03;
 const FLASH_OVERLAY_STRENGTH: f32 = 0.35;
+const CIRCUIT_MOTION_SECS: f64 = 0.12;
+
+#[derive(Clone, Debug)]
+pub(crate) struct CircuitMotion {
+    start_offsets_x: BTreeMap<GateId, f32>,
+    started_at: f64,
+}
+
+impl CircuitMotion {
+    fn between(
+        before: &[PlacedGate],
+        after: &[PlacedGate],
+        previous: Option<&Self>,
+        started_at: f64,
+    ) -> Option<Self> {
+        let before_x = before
+            .iter()
+            .map(|gate| {
+                let visible_x = gate.pos.x
+                    + previous
+                        .and_then(|motion| motion.offset_x(gate.id, started_at))
+                        .unwrap_or_default();
+                (gate.id, visible_x)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let start_offsets_x = after
+            .iter()
+            .filter_map(|gate| {
+                let offset = before_x.get(&gate.id)? - gate.pos.x;
+                (offset.abs() > f32::EPSILON).then_some((gate.id, offset))
+            })
+            .collect::<BTreeMap<_, _>>();
+        (!start_offsets_x.is_empty()).then_some(Self {
+            start_offsets_x,
+            started_at,
+        })
+    }
+
+    pub(crate) fn offset_x(&self, gate_id: GateId, now: f64) -> Option<f32> {
+        let elapsed = (now - self.started_at).max(0.0);
+        if elapsed >= CIRCUIT_MOTION_SECS {
+            return None;
+        }
+        let start = *self.start_offsets_x.get(&gate_id)?;
+        let t = (elapsed / CIRCUIT_MOTION_SECS) as f32;
+        Some(start * (1.0 - t).powi(3))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct CopyFlash {
@@ -42,7 +91,11 @@ pub(crate) struct PasteFlash {
 
 impl PasteFlash {
     pub(crate) fn is_active(&self, now: f64) -> bool {
-        now - self.started_at < PASTE_FLASH_SECS
+        now - self.started_at < PASTE_REVEAL_DELAY_SECS + PASTE_FLASH_SECS
+    }
+
+    pub(crate) fn hides(&self, gate_id: GateId, now: f64) -> bool {
+        self.gate_ids.contains(&gate_id) && now - self.started_at < PASTE_REVEAL_DELAY_SECS
     }
 
     pub(crate) fn strength(&self, gate_id: GateId, now: f64) -> Option<f32> {
@@ -55,8 +108,8 @@ impl PasteFlash {
         now: f64,
     ) -> Option<f32> {
         let applies = gate_ids.into_iter().any(|id| self.gate_ids.contains(&id));
-        let elapsed = (now - self.started_at).max(0.0);
-        (applies && elapsed < PASTE_FLASH_SECS)
+        let elapsed = now - self.started_at - PASTE_REVEAL_DELAY_SECS;
+        (applies && (0.0..PASTE_FLASH_SECS).contains(&elapsed))
             .then_some(FLASH_OVERLAY_STRENGTH * (1.0 - (elapsed / PASTE_FLASH_SECS) as f32))
     }
 }
@@ -331,6 +384,18 @@ pub(crate) fn paste_fragment(
 }
 
 impl super::QniApp {
+    pub(crate) fn paste_gate_hidden(&self, gate_id: GateId, now: f64) -> bool {
+        self.paste_flashes
+            .iter()
+            .any(|flash| flash.hides(gate_id, now))
+    }
+
+    pub(crate) fn circuit_motion_offset_x(&self, gate_id: GateId, now: f64) -> Option<f32> {
+        self.circuit_motion
+            .as_ref()
+            .and_then(|motion| motion.offset_x(gate_id, now))
+    }
+
     pub(crate) fn paste_preview(&self) -> Option<(CircuitCell, (usize, usize))> {
         let cell = self.active_cell?;
         let fragment = self.circuit_clipboard.as_ref()?;
@@ -409,7 +474,7 @@ impl super::QniApp {
         }
         if cut {
             self.copy_selected_gates(ctx);
-            self.delete_selected_gates(ctx);
+            self.delete_selected_gates(ctx, true);
         }
         if paste {
             self.paste_copied_gates(ctx);
@@ -421,7 +486,7 @@ impl super::QniApp {
             self.redo_circuit(ctx);
         }
         if delete {
-            self.delete_selected_gates(ctx);
+            self.delete_selected_gates(ctx, false);
         }
         if escape {
             self.selected_gate_ids.clear();
@@ -474,16 +539,25 @@ impl super::QniApp {
             .map(|gate| gate.id)
             .collect();
 
+        let now = now_seconds();
+        let motion = CircuitMotion::between(
+            &self.placed_gates,
+            &next_gates,
+            self.circuit_motion.as_ref(),
+            now,
+        );
         self.begin_circuit_commit();
         self.placed_gates = next_gates;
-        let now = now_seconds();
+        self.circuit_motion = motion;
         self.paste_flashes.retain(|flash| flash.is_active(now));
         self.paste_flashes.push(PasteFlash {
             gate_ids: pasted_gate_ids,
             started_at: now,
         });
         ctx.request_repaint();
-        ctx.request_repaint_after(Duration::from_secs_f64(PASTE_FLASH_SECS));
+        ctx.request_repaint_after(Duration::from_secs_f64(
+            PASTE_REVEAL_DELAY_SECS + PASTE_FLASH_SECS,
+        ));
         self.update_qubit_count();
         if self.commit_current_circuit(ctx) {
             self.gpu_plan.mark_dirty();
@@ -491,16 +565,29 @@ impl super::QniApp {
         }
     }
 
-    fn delete_selected_gates(&mut self, ctx: &eframe::egui::Context) {
+    fn delete_selected_gates(&mut self, ctx: &eframe::egui::Context, animate_compaction: bool) {
         if self.library.active_locked() || self.selected_gate_ids.is_empty() {
             return;
         }
+        let before = animate_compaction.then(|| self.placed_gates.clone());
         self.begin_circuit_commit();
         self.placed_gates
             .retain(|gate| !self.selected_gate_ids.contains(&gate.id));
         self.selected_gate_ids.clear();
         self.active_cell = None;
         self.compact_empty_steps();
+        self.circuit_motion = before.as_deref().and_then(|before| {
+            CircuitMotion::between(
+                before,
+                &self.placed_gates,
+                self.circuit_motion.as_ref(),
+                now_seconds(),
+            )
+        });
+        if self.circuit_motion.is_some() {
+            ctx.request_repaint();
+            ctx.request_repaint_after(Duration::from_secs_f64(CIRCUIT_MOTION_SECS));
+        }
         self.update_qubit_count();
         if self.commit_current_circuit(ctx) {
             self.gpu_plan.mark_dirty();
@@ -532,6 +619,47 @@ mod tests {
         };
 
         assert_eq!(flash.strength(GateId::from_u32(1), 10.0), Some(1.0));
+    }
+
+    #[test]
+    fn circuit_motion_starts_at_the_previous_position() {
+        let before = vec![gate(1, GateKind::H, 2, 0)];
+        let after = vec![gate(1, GateKind::H, 1, 0)];
+        let motion = CircuitMotion::between(&before, &after, None, 10.0).unwrap();
+
+        assert_eq!(
+            motion.offset_x(GateId::from_u32(1), 10.0),
+            Some(before[0].pos.x - after[0].pos.x)
+        );
+    }
+
+    #[test]
+    fn circuit_motion_preserves_the_previous_visible_position() {
+        let first_before = vec![gate(1, GateKind::H, 0, 0)];
+        let first_after = vec![gate(1, GateKind::H, 1, 0)];
+        let first = CircuitMotion::between(&first_before, &first_after, None, 10.0).unwrap();
+        let second_after = vec![gate(1, GateKind::H, 2, 0)];
+        let second =
+            CircuitMotion::between(&first_after, &second_after, Some(&first), 10.06).unwrap();
+        let visible_before =
+            first_after[0].pos.x + first.offset_x(GateId::from_u32(1), 10.06).unwrap();
+
+        assert_eq!(
+            second_after[0].pos.x + second.offset_x(GateId::from_u32(1), 10.06).unwrap(),
+            visible_before
+        );
+    }
+
+    #[test]
+    fn circuit_motion_finishes_after_one_hundred_twenty_milliseconds() {
+        let before = vec![gate(1, GateKind::H, 2, 0)];
+        let after = vec![gate(1, GateKind::H, 1, 0)];
+        let motion = CircuitMotion::between(&before, &after, None, 10.0).unwrap();
+
+        assert_eq!(
+            motion.offset_x(GateId::from_u32(1), 10.0 + CIRCUIT_MOTION_SECS),
+            None
+        );
     }
 
     #[test]
@@ -573,7 +701,10 @@ mod tests {
             started_at: 10.0,
         };
 
-        assert_eq!(flash.strength(GateId::from_u32(1), 10.0), Some(0.35));
+        assert_eq!(
+            flash.strength(GateId::from_u32(1), 10.0 + PASTE_REVEAL_DELAY_SECS),
+            Some(0.35)
+        );
     }
 
     #[test]
@@ -583,7 +714,13 @@ mod tests {
             started_at: 10.0,
         };
 
-        assert_eq!(flash.strength(GateId::from_u32(1), 10.5), None);
+        assert_eq!(
+            flash.strength(
+                GateId::from_u32(1),
+                10.0 + PASTE_REVEAL_DELAY_SECS + PASTE_FLASH_SECS
+            ),
+            None
+        );
     }
 
     #[test]
@@ -594,7 +731,10 @@ mod tests {
         };
 
         assert_eq!(
-            flash.strength_for_gate_ids([GateId::from_u32(1), GateId::from_u32(2)], 10.0),
+            flash.strength_for_gate_ids(
+                [GateId::from_u32(1), GateId::from_u32(2)],
+                10.0 + PASTE_REVEAL_DELAY_SECS
+            ),
             Some(0.35)
         );
     }

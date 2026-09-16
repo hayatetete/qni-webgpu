@@ -178,6 +178,7 @@ impl QniApp {
         self.selected_gate_ids.clear();
         self.copy_flash = None;
         self.paste_flashes.clear();
+        self.circuit_motion = None;
         self.active_cell = None;
         self.selection_drag = None;
         if !self

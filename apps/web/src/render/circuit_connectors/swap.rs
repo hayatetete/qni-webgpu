@@ -10,6 +10,7 @@ use crate::simulation_plan::ColumnAnalysis;
 
 use super::super::circuit::gate_slot_index_for_render;
 use super::draw_vertical_connector;
+use crate::shared::now_seconds;
 
 pub(super) fn draw_swap_connectors(
     app: &QniApp,
@@ -24,6 +25,7 @@ pub(super) fn draw_swap_connectors(
     });
 
     for column in analysis.columns() {
+        let now = now_seconds();
         let gates = column
             .gates()
             .iter()
@@ -31,6 +33,9 @@ pub(super) fn draw_swap_connectors(
             .filter(|gate| gate.kind == GateKind::Swap)
             .collect::<Vec<_>>();
         if gates.len() < 2 {
+            continue;
+        }
+        if gates.iter().all(|gate| app.paste_gate_hidden(gate.id, now)) {
             continue;
         }
         let mut ys = gates
@@ -45,7 +50,14 @@ pub(super) fn draw_swap_connectors(
         // stays centred in the transparent Swap body during hover / drag.
         let x = gates
             .iter()
-            .map(|gate| circuit_origin.x + gate.pos.x + GATE_SIZE / 2.0)
+            .map(|gate| {
+                circuit_origin.x
+                    + gate.pos.x
+                    + app
+                        .circuit_motion_offset_x(gate.id, now)
+                        .unwrap_or_default()
+                    + GATE_SIZE / 2.0
+            })
             .sum::<f32>()
             / gates.len() as f32;
         let color = app.connector_color(gates.iter().map(|gate| gate.id), colors);
