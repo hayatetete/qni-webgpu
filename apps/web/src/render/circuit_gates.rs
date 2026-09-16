@@ -1,11 +1,13 @@
 //! Placed circuit gates and GPU-backed circuit overlays.
 
+use std::time::Duration;
+
 use eframe::egui;
 use eframe::egui_wgpu;
 
 use crate::app::{GateId, QniApp};
 use crate::colors::Colors;
-use crate::constants::{GATE_SIZE, LINE_GAP};
+use crate::constants::{DRAG_REPAINT_MIN_SECS, GATE_SIZE, LINE_GAP};
 use crate::gates::GateKind;
 use crate::gpu::{
     AmplitudeDisplayCallback, AmplitudeInstance, AmplitudePopupValueCallback, BlochOverlayCallback,
@@ -19,6 +21,7 @@ use crate::gpu::{
 use crate::grid_cell::GridCell;
 use crate::icons::{draw_bloch_vector, draw_gate_body, draw_meter_icon};
 use crate::layout::{amplitude_grid_dims, amplitude_grid_rect, gate_visible_rect};
+use crate::shared::now_seconds;
 use crate::span_resize::{span_resize_body_rect, span_resize_ease_out_back, SpanResizeHandles};
 
 use super::amplitude_circle_popover as amplitude_popover;
@@ -120,6 +123,7 @@ impl QniApp {
         fast_drag: bool,
         dragging_gate_id: Option<GateId>,
     ) {
+        let now = now_seconds();
         for gate in &self.placed_gates {
             let live_dragging_gate = dragging_gate_id == Some(gate.id)
                 && self.dragging_live_display_snap
@@ -138,6 +142,24 @@ impl QniApp {
             let measurement_has_slot =
                 gate.kind == GateKind::Measurement && self.gpu_plan.has_measurement_slot(gate.id);
             let edit_hover_visible = !self.library.active_locked();
+            let copy_strength = self
+                .copy_flash
+                .as_ref()
+                .and_then(|flash| flash.strength(gate.id, now));
+            let paste_strength = self
+                .paste_flashes
+                .iter()
+                .filter_map(|flash| flash.strength(gate.id, now))
+                .reduce(f32::max);
+            let highlight_strength = paste_strength;
+            if highlight_strength.is_some() {
+                painter
+                    .ctx()
+                    .request_repaint_after(Duration::from_secs_f64(DRAG_REPAINT_MIN_SECS));
+            }
+            let highlighted_colors =
+                highlight_strength.map(|strength| colors.gate_highlighted(strength));
+            let gate_colors = highlighted_colors.as_ref().unwrap_or(colors);
             let circuit_fill = colors.background;
             if gate.kind == GateKind::Measurement {
                 // qni shortens the input/output wire around a measurement
@@ -163,10 +185,13 @@ impl QniApp {
             if !fast_drag && self.selected_gate_ids.contains(&gate.id) {
                 // Flexoki blue-600 via the semantic-on theme role. This
                 // persistent selection ring is distinct from purple hover.
+                let selection_color = copy_strength
+                    .map(|strength| colors.semantic_on.lerp_to_gamma(colors.surface, strength))
+                    .unwrap_or(colors.semantic_on);
                 painter.rect_stroke(
                     body_rect.expand(4.0),
                     hover_frame_corner_radius(gate.kind),
-                    egui::Stroke::new(2.0_f32, colors.semantic_on),
+                    egui::Stroke::new(2.0_f32, selection_color),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -179,9 +204,9 @@ impl QniApp {
                 // Repaint the meter in the same neutral tone as the wire after
                 // masking the wire gap. Draw it once (instead of purple then
                 // neutral) so anti-aliased edges do not leak the palette colour.
-                draw_meter_icon(painter, gate_rect, colors.measurement_fired_icon);
+                draw_meter_icon(painter, gate_rect, gate_colors.measurement_fired_icon);
             } else {
-                draw_gate_body(painter, body_rect, gate.kind, colors);
+                draw_gate_body(painter, body_rect, gate.kind, gate_colors);
                 if gate.kind == GateKind::AntiControl {
                     painter.circle_filled(
                         gate_rect.center(),
@@ -221,7 +246,7 @@ impl QniApp {
                 // Not yet captured by a recompute (placed mid-drag, unsnapped,
                 // or before the first frame's GPU dispatch). Show the
                 // inactive tx-3 center dot via egui until the GPU overlay takes over.
-                draw_bloch_vector(painter, gate_rect, [0.0, 0.0, 0.0], colors);
+                draw_bloch_vector(painter, gate_rect, [0.0, 0.0, 0.0], gate_colors);
             }
         }
     }

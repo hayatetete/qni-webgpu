@@ -6,11 +6,60 @@
 //! state.
 
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 use super::{CircuitColumnIndex, GateId, GateIdAllocator, PlacedGate, WireIndex};
 use crate::gates::{GateKind, GateSpan, ParametricAngle};
 use crate::layout::gate_width_cols;
 use crate::qubit_count::QubitCapacity;
+use crate::shared::now_seconds;
+
+const COPY_FLASH_SECS: f64 = 0.18;
+const PASTE_FLASH_SECS: f64 = 0.5;
+const FLASH_OVERLAY_STRENGTH: f32 = 0.35;
+
+#[derive(Clone, Debug)]
+pub(crate) struct CopyFlash {
+    gate_ids: BTreeSet<GateId>,
+    started_at: f64,
+}
+
+impl CopyFlash {
+    pub(crate) fn strength(&self, gate_id: GateId, now: f64) -> Option<f32> {
+        if !self.gate_ids.contains(&gate_id) {
+            return None;
+        }
+        let elapsed = (now - self.started_at).max(0.0);
+        (elapsed < COPY_FLASH_SECS).then_some(1.0 - (elapsed / COPY_FLASH_SECS) as f32)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PasteFlash {
+    gate_ids: BTreeSet<GateId>,
+    started_at: f64,
+}
+
+impl PasteFlash {
+    pub(crate) fn is_active(&self, now: f64) -> bool {
+        now - self.started_at < PASTE_FLASH_SECS
+    }
+
+    pub(crate) fn strength(&self, gate_id: GateId, now: f64) -> Option<f32> {
+        self.strength_for_gate_ids([gate_id], now)
+    }
+
+    pub(crate) fn strength_for_gate_ids(
+        &self,
+        gate_ids: impl IntoIterator<Item = GateId>,
+        now: f64,
+    ) -> Option<f32> {
+        let applies = gate_ids.into_iter().any(|id| self.gate_ids.contains(&id));
+        let elapsed = (now - self.started_at).max(0.0);
+        (applies && elapsed < PASTE_FLASH_SECS)
+            .then_some(FLASH_OVERLAY_STRENGTH * (1.0 - (elapsed / PASTE_FLASH_SECS) as f32))
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct CircuitCell {
@@ -185,6 +234,20 @@ fn selection_paste_anchor(
     })
 }
 
+fn copied_selection(
+    placed_gates: &[PlacedGate],
+    selected_gate_ids: &BTreeSet<GateId>,
+    started_at: f64,
+) -> Option<(CircuitFragment, CircuitCell, CopyFlash)> {
+    let fragment = CircuitFragment::from_selection(placed_gates, selected_gate_ids)?;
+    let anchor = selection_paste_anchor(placed_gates, selected_gate_ids)?;
+    let flash = CopyFlash {
+        gate_ids: selected_gate_ids.clone(),
+        started_at,
+    };
+    Some((fragment, anchor, flash))
+}
+
 pub(crate) fn paste_fragment(
     placed_gates: &[PlacedGate],
     fragment: &CircuitFragment,
@@ -342,10 +405,10 @@ impl super::QniApp {
             self.select_all_gates();
         }
         if copy {
-            self.copy_selected_gates();
+            self.copy_selected_gates(ctx);
         }
         if cut {
-            self.copy_selected_gates();
+            self.copy_selected_gates(ctx);
             self.delete_selected_gates(ctx);
         }
         if paste {
@@ -363,18 +426,22 @@ impl super::QniApp {
         if escape {
             self.selected_gate_ids.clear();
             self.active_cell = None;
+            self.copy_flash = None;
             ctx.request_repaint();
         }
     }
 
-    fn copy_selected_gates(&mut self) {
-        let Some(fragment) =
-            CircuitFragment::from_selection(&self.placed_gates, &self.selected_gate_ids)
+    fn copy_selected_gates(&mut self, ctx: &eframe::egui::Context) {
+        let Some((fragment, anchor, flash)) =
+            copied_selection(&self.placed_gates, &self.selected_gate_ids, now_seconds())
         else {
             return;
         };
         self.circuit_clipboard = Some(fragment);
-        self.active_cell = selection_paste_anchor(&self.placed_gates, &self.selected_gate_ids);
+        self.active_cell = Some(anchor);
+        self.copy_flash = Some(flash);
+        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_secs_f64(COPY_FLASH_SECS));
     }
 
     fn select_all_gates(&mut self) {
@@ -402,9 +469,21 @@ impl super::QniApp {
         ) else {
             return;
         };
+        let pasted_gate_ids = next_gates[self.placed_gates.len()..]
+            .iter()
+            .map(|gate| gate.id)
+            .collect();
 
         self.begin_circuit_commit();
         self.placed_gates = next_gates;
+        let now = now_seconds();
+        self.paste_flashes.retain(|flash| flash.is_active(now));
+        self.paste_flashes.push(PasteFlash {
+            gate_ids: pasted_gate_ids,
+            started_at: now,
+        });
+        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_secs_f64(PASTE_FLASH_SECS));
         self.update_qubit_count();
         if self.commit_current_circuit(ctx) {
             self.gpu_plan.mark_dirty();
@@ -443,6 +522,94 @@ mod tests {
             GateSpan::SINGLE,
             None,
         )
+    }
+
+    #[test]
+    fn copy_flash_fades_from_full_strength() {
+        let flash = CopyFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(1)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(flash.strength(GateId::from_u32(1), 10.0), Some(1.0));
+    }
+
+    #[test]
+    fn copied_selection_starts_flash_for_the_selected_gate() {
+        let gates = vec![gate(1, GateKind::H, 0, 0)];
+        let (_, _, flash) =
+            copied_selection(&gates, &BTreeSet::from([GateId::from_u32(1)]), 10.0).unwrap();
+
+        assert_eq!(flash.strength(GateId::from_u32(1), 10.0), Some(1.0));
+    }
+
+    #[test]
+    fn copy_flash_ignores_gates_outside_the_copy() {
+        let flash = CopyFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(1)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(flash.strength(GateId::from_u32(2), 10.0), None);
+    }
+
+    #[test]
+    fn copy_flash_ends_after_its_duration() {
+        let flash = CopyFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(1)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(
+            flash.strength(GateId::from_u32(1), 10.0 + COPY_FLASH_SECS + 0.001),
+            None
+        );
+    }
+
+    #[test]
+    fn paste_flash_starts_at_thirty_five_percent() {
+        let flash = PasteFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(1)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(flash.strength(GateId::from_u32(1), 10.0), Some(0.35));
+    }
+
+    #[test]
+    fn paste_flash_ends_after_half_a_second() {
+        let flash = PasteFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(1)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(flash.strength(GateId::from_u32(1), 10.5), None);
+    }
+
+    #[test]
+    fn paste_flash_applies_when_connector_contains_a_pasted_gate() {
+        let flash = PasteFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(2)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(
+            flash.strength_for_gate_ids([GateId::from_u32(1), GateId::from_u32(2)], 10.0),
+            Some(0.35)
+        );
+    }
+
+    #[test]
+    fn paste_flash_ignores_connector_without_a_pasted_gate() {
+        let flash = PasteFlash {
+            gate_ids: BTreeSet::from([GateId::from_u32(3)]),
+            started_at: 10.0,
+        };
+
+        assert_eq!(
+            flash.strength_for_gate_ids([GateId::from_u32(1), GateId::from_u32(2)], 10.0),
+            None
+        );
     }
 
     fn capacity() -> QubitCapacity {

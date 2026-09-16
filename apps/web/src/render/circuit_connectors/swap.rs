@@ -48,6 +48,7 @@ pub(super) fn draw_swap_connectors(
             .map(|gate| circuit_origin.x + gate.pos.x + GATE_SIZE / 2.0)
             .sum::<f32>()
             / gates.len() as f32;
-        draw_vertical_connector(painter, x, top_y, bottom_y, colors.box_fill);
+        let color = app.connector_color(gates.iter().map(|gate| gate.id), colors);
+        draw_vertical_connector(painter, x, top_y, bottom_y, color);
     }
 }

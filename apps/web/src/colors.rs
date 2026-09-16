@@ -119,6 +119,34 @@ impl Theme {
 }
 
 impl Colors {
+    /// Brightens gate chrome toward Flexoki `bg` for transient copy/paste
+    /// feedback. Rendering code remains expressed in semantic theme roles.
+    pub(crate) fn gate_highlighted(self, strength: f32) -> Self {
+        let paper = self.surface;
+        let brighten = |color: egui::Color32| color.lerp_to_gamma(paper, strength);
+        Self {
+            box_fill: brighten(self.box_fill),
+            label: brighten(self.label),
+            line: brighten(self.line),
+            state_fill: brighten(self.state_fill),
+            amplitude_disk_border: brighten(self.amplitude_disk_border),
+            display_placeholder_fill: brighten(self.display_placeholder_fill),
+            state_outline: brighten(self.state_outline),
+            state_outline_zero: brighten(self.state_outline_zero),
+            state_needle: brighten(self.state_needle),
+            semantic_off: brighten(self.semantic_off),
+            semantic_on: brighten(self.semantic_on),
+            semantic_intermediate: brighten(self.semantic_intermediate),
+            semantic_disabled: brighten(self.semantic_disabled),
+            bloch_sphere_bg: brighten(self.bloch_sphere_bg),
+            bloch_sphere_lines: brighten(self.bloch_sphere_lines),
+            measurement_fired_icon: brighten(self.measurement_fired_icon),
+            spacer_dots: brighten(self.spacer_dots),
+            popup_icon: brighten(self.popup_icon),
+            ..self
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Self::for_theme(DEFAULT_THEME)
     }

@@ -176,6 +176,8 @@ impl QniApp {
         self.placed_gates = gates;
         self.gate_ids = gate_ids;
         self.selected_gate_ids.clear();
+        self.copy_flash = None;
+        self.paste_flashes.clear();
         self.active_cell = None;
         self.selection_drag = None;
         if !self

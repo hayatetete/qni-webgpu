@@ -75,8 +75,9 @@ pub(super) fn draw_control_connectors(
         // insert previews stay out so the connector never drifts away from a
         // transparent Control / AntiControl body.
         let x = circuit_origin.x + metrics.slot_centers[column.slot];
+        let color = app.connector_color(column.gates().iter().map(|gate| gate.id), colors);
         for (start_y, end_y) in connector_segments(min_y, max_y, &anti_control_gaps) {
-            draw_vertical_connector(painter, x, start_y, end_y, colors.box_fill);
+            draw_vertical_connector(painter, x, start_y, end_y, color);
         }
     }
 }

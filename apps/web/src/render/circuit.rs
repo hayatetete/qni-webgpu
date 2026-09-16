@@ -170,6 +170,9 @@ impl QniApp {
             dragging_gate_id,
         );
 
+        // Flash the display body before its GPU content is painted. Drawing
+        // this after the callbacks washes out the display and leaves only
+        // its frame visibly intact during paste feedback.
         self.draw_circuit_gpu_overlays(painter, rect, circuit_origin, dragging_gate_id, colors);
 
         for (index, &line_y) in metrics.line_ys.iter().enumerate() {

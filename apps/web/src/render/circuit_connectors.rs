@@ -12,6 +12,7 @@ use eframe::egui;
 use crate::app::{GateId, QniApp};
 use crate::colors::Colors;
 use crate::layout::LayoutMetrics;
+use crate::shared::now_seconds;
 
 // Tailwind spacing-1 = 4px. Use the same even-width body for all vertical
 // gate connectors (Control / Swap / same-angle Phase) so the connector shares
@@ -42,6 +43,24 @@ pub(super) fn draw_vertical_connector(
 }
 
 impl QniApp {
+    pub(super) fn connector_color(
+        &self,
+        gate_ids: impl IntoIterator<Item = GateId>,
+        colors: &Colors,
+    ) -> egui::Color32 {
+        let gate_ids = gate_ids.into_iter().collect::<Vec<_>>();
+        let now = now_seconds();
+        let Some(strength) = self
+            .paste_flashes
+            .iter()
+            .filter_map(|flash| flash.strength_for_gate_ids(gate_ids.iter().copied(), now))
+            .reduce(f32::max)
+        else {
+            return colors.box_fill;
+        };
+        colors.box_fill.lerp_to_gamma(colors.surface, strength)
+    }
+
     pub(super) fn draw_circuit_connectors(
         &self,
         painter: &egui::Painter,
