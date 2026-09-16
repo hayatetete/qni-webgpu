@@ -89,7 +89,7 @@ impl eframe::App for QniApp {
         self.apply_pending_circuit_library_seed(ctx);
         self.apply_external_circuit_library_update(ctx);
         self.apply_pending_url_payload(ctx);
-        self.handle_copy_paste_shortcuts(ctx);
+        self.handle_circuit_edit_shortcuts(ctx);
         let colors = self.colors();
         let mut panel_frame = egui::Frame::central_panel(&ctx.style());
         panel_frame.fill = colors.background;

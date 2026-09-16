@@ -176,7 +176,8 @@ impl QniApp {
         self.placed_gates = gates;
         self.gate_ids = gate_ids;
         self.selected_gate_ids.clear();
-        self.paste_anchor = None;
+        self.active_cell = None;
+        self.selection_drag = None;
         if !self
             .exec_mode
             .qubit_capacity()

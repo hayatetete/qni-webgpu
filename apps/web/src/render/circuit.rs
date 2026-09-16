@@ -1,6 +1,8 @@
 //! Circuit area drawing — qubit lines, placed gates, palette, drag
 //! preview. Independent of the state-vector panel.
 
+use std::time::Duration;
+
 use eframe::egui;
 
 use crate::app::{GateId, PlacedGate, QniApp};
@@ -9,6 +11,11 @@ use crate::constants::{CIRCUIT_PADDING, GATE_SIZE, LINE_GAP, LINE_Y, REM};
 use crate::layout::{nearest_slot_index, LayoutMetrics};
 
 const SLOT_CENTER_EPSILON: f32 = 0.5;
+const PASTE_CARET_BLINK_SECS: f64 = 0.53;
+
+fn paste_caret_visible(time: f64) -> bool {
+    ((time / PASTE_CARET_BLINK_SECS).floor() as i64) % 2 == 0
+}
 
 pub(super) fn gate_slot_index_for_render(
     gate: &PlacedGate,
@@ -64,7 +71,11 @@ impl QniApp {
         // preview), breakpoint = full opacity (locked-in step). Mirrors
         // qni's `circuit-step::after` data-active / data-breakpoint
         // styling.
-        if !metrics.line_ys.is_empty() && !metrics.slot_centers.is_empty() {
+        let paste_preview = self.paste_preview();
+        if paste_preview.is_none()
+            && !metrics.line_ys.is_empty()
+            && !metrics.slot_centers.is_empty()
+        {
             let top = metrics.line_ys[0] - crate::constants::LINE_GAP * 0.5;
             let bot = metrics.line_ys[metrics.line_ys.len() - 1] + crate::constants::LINE_GAP * 0.5;
             let step_line = |painter: &egui::Painter, slot: usize, alpha: u8| {
@@ -91,6 +102,65 @@ impl QniApp {
                     step_line(painter, step.as_usize(), 80);
                 }
             }
+        }
+
+        if let Some((anchor, (width, height))) = paste_preview {
+            painter
+                .ctx()
+                .request_repaint_after(Duration::from_secs_f64(PASTE_CARET_BLINK_SECS));
+            let insert_column = anchor.column.as_usize().saturating_add(1);
+            if let (Some(&anchor_x), Some(&anchor_y)) = (
+                metrics.slot_centers.get(anchor.column.as_usize()),
+                metrics.line_ys.get(anchor.wire.as_usize()),
+            ) {
+                let marker_x = circuit_origin.x + anchor_x + crate::constants::SLOT_SPACING * 0.5;
+                let marker_bottom = anchor_y
+                    + crate::constants::LINE_GAP * height.saturating_sub(1) as f32
+                    + GATE_SIZE * 0.5;
+                let time = painter.ctx().input(|input| input.time);
+                if paste_caret_visible(time) {
+                    painter.line_segment(
+                        [
+                            egui::pos2(marker_x, circuit_origin.y + anchor_y - GATE_SIZE * 0.5),
+                            egui::pos2(marker_x, circuit_origin.y + marker_bottom),
+                        ],
+                        egui::Stroke::new(2.0_f32, colors.semantic_on),
+                    );
+                }
+
+                if let Some(&insert_x) = metrics.slot_centers.get(insert_column) {
+                    let preview = egui::Rect::from_min_size(
+                        circuit_origin
+                            + egui::vec2(insert_x - GATE_SIZE * 0.5, anchor_y - GATE_SIZE * 0.5),
+                        egui::vec2(
+                            GATE_SIZE
+                                + crate::constants::SLOT_SPACING * width.saturating_sub(1) as f32,
+                            GATE_SIZE
+                                + crate::constants::LINE_GAP * height.saturating_sub(1) as f32,
+                        ),
+                    );
+                    painter.rect_filled(
+                        preview,
+                        egui::CornerRadius::same(4),
+                        with_alpha(colors.semantic_on, 31),
+                    );
+                }
+            }
+        }
+
+        if let Some(selection_rect) = self.selection_drag_rect() {
+            let selection_rect = selection_rect.translate(circuit_origin.to_vec2());
+            painter.rect_filled(
+                selection_rect,
+                egui::CornerRadius::ZERO,
+                with_alpha(colors.semantic_on, 31),
+            );
+            painter.rect_stroke(
+                selection_rect,
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(1.0_f32, colors.semantic_on),
+                egui::StrokeKind::Inside,
+            );
         }
 
         self.draw_circuit_connectors(painter, metrics, colors, circuit_origin, dragging_gate_id);
@@ -130,6 +200,14 @@ mod tests {
     use crate::constants::SLOT_SPACING;
     use crate::gates::GateKind;
     use crate::layout::layout_metrics;
+
+    #[test]
+    fn paste_caret_alternates_each_blink_interval() {
+        assert!(super::paste_caret_visible(0.0));
+        assert!(super::paste_caret_visible(0.52));
+        assert!(!super::paste_caret_visible(0.53));
+        assert!(super::paste_caret_visible(1.06));
+    }
 
     #[test]
     fn dragged_insert_preview_does_not_join_slot_connector() {

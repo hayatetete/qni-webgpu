@@ -1,6 +1,8 @@
 use eframe::egui;
 
-use super::{step_at_cursor, CircuitInputGeometry, DragController, DragPointer};
+use super::{
+    circuit_cell_at_cursor, step_at_cursor, CircuitInputGeometry, DragController, DragPointer,
+};
 use crate::app::{
     CircuitColumnIndex, DragState, LiveDragSnap, PlacedGate, QniApp, SpanResizeDrag, WireIndex,
 };
@@ -21,6 +23,8 @@ enum DragStartIntent {
         preview_pos: egui::Pos2,
     },
     BreakpointStep(CircuitColumnIndex),
+    EmptyCell(super::CircuitCell),
+    Background,
     None,
 }
 
@@ -50,6 +54,12 @@ impl DragController {
                 drag,
                 starts_live_display_snap,
             } => {
+                let shift = ctx.input(|input| input.modifiers.shift);
+                if shift {
+                    app.add_gate_to_copy_selection(drag.id);
+                    ctx.request_repaint();
+                    return true;
+                }
                 app.select_gate_for_copy(drag.id);
                 if app.library.active_locked() {
                     return false;
@@ -119,6 +129,24 @@ impl DragController {
                     app.gpu_plan.mark_step_preview_dirty();
                     ctx.request_repaint();
                 }
+                true
+            }
+            DragStartIntent::EmptyCell(cell) => {
+                let Some(start) = pointer.local_pos else {
+                    return false;
+                };
+                let additive = ctx.input(|input| input.modifiers.shift);
+                DragController::begin_selection_drag(app, start, Some(cell), additive);
+                ctx.request_repaint();
+                true
+            }
+            DragStartIntent::Background => {
+                let Some(start) = pointer.local_pos else {
+                    return false;
+                };
+                let additive = ctx.input(|input| input.modifiers.shift);
+                DragController::begin_selection_drag(app, start, None, additive);
+                ctx.request_repaint();
                 true
             }
             DragStartIntent::None => false,
@@ -194,9 +222,22 @@ fn start_intent(
         }
     }
 
-    // No gate / palette under the cursor. If we're inside a step slot,
-    // lock the breakpoint to that column.
-    step_at_cursor(cursor, &geometry.metrics)
-        .map(DragStartIntent::BreakpointStep)
-        .unwrap_or(DragStartIntent::None)
+    if let Some(cell) = circuit_cell_at_cursor(cursor, &geometry.metrics) {
+        return DragStartIntent::EmptyCell(cell);
+    }
+
+    // No gate / palette / empty dropzone under the cursor. If we're inside a
+    // step slot, lock the breakpoint to that column without moving the caret.
+    if let Some(step) = step_at_cursor(cursor, &geometry.metrics) {
+        return DragStartIntent::BreakpointStep(step);
+    }
+
+    if pointer
+        .screen_pos
+        .is_some_and(|screen_pos| geometry.content_rect.contains(screen_pos))
+    {
+        DragStartIntent::Background
+    } else {
+        DragStartIntent::None
+    }
 }

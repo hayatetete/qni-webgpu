@@ -50,31 +50,37 @@ impl CircuitFragment {
             .iter()
             .filter(|gate| selected_gate_ids.contains(&gate.id))
             .collect();
-        let min_column = selected.iter().map(|gate| gate.column.as_usize()).min()?;
         let min_wire = selected.iter().map(|gate| gate.wire.as_usize()).min()?;
-        let max_column_end = selected
+        let selected_ranges = selected
             .iter()
             .map(|gate| {
-                gate.column
-                    .as_usize()
-                    .checked_add(gate_width_cols(gate.kind, gate.span.get()))
+                let start = gate.column.as_usize();
+                let end = start.checked_add(gate_width_cols(gate.kind, gate.span.get()))?;
+                Some(start..end)
             })
-            .collect::<Option<Vec<_>>>()?
+            .collect::<Option<Vec<_>>>()?;
+        let occupied_columns = selected_ranges
             .into_iter()
-            .max()?;
+            .flatten()
+            .collect::<BTreeSet<_>>();
+        let column_offsets = occupied_columns
+            .iter()
+            .enumerate()
+            .map(|(offset, column)| (*column, offset))
+            .collect::<std::collections::BTreeMap<_, _>>();
         let max_wire_end = selected
             .iter()
             .map(|gate| gate.wire.as_usize().checked_add(gate.span.get()))
             .collect::<Option<Vec<_>>>()?
             .into_iter()
             .max()?;
-        let width = max_column_end.checked_sub(min_column)?;
+        let width = occupied_columns.len();
         let height = max_wire_end.checked_sub(min_wire)?;
         let gates = selected
             .into_iter()
             .map(|gate| ClipboardGate {
                 kind: gate.kind,
-                column_offset: gate.column.as_usize() - min_column,
+                column_offset: column_offsets[&gate.column.as_usize()],
                 wire_offset: gate.wire.as_usize() - min_wire,
                 span: gate.span,
                 angle: gate.angle,
@@ -262,29 +268,102 @@ pub(crate) fn paste_fragment(
 }
 
 impl super::QniApp {
+    pub(crate) fn paste_preview(&self) -> Option<(CircuitCell, (usize, usize))> {
+        let cell = self.active_cell?;
+        let fragment = self.circuit_clipboard.as_ref()?;
+        Some((cell, (fragment.width, fragment.height)))
+    }
+
     pub(crate) fn select_gate_for_copy(&mut self, gate_id: GateId) {
         let Some(gate) = self.placed_gates.iter().find(|gate| gate.id == gate_id) else {
             return;
         };
         self.selected_gate_ids = connected_selection(&self.placed_gates, gate);
-        self.paste_anchor = selection_paste_anchor(&self.placed_gates, &self.selected_gate_ids);
+        self.active_cell = Some(CircuitCell {
+            column: gate.column,
+            wire: gate.wire,
+        });
     }
 
-    pub(crate) fn handle_copy_paste_shortcuts(&mut self, ctx: &eframe::egui::Context) {
+    pub(crate) fn select_empty_cell(&mut self, cell: CircuitCell) {
+        self.active_cell = Some(cell);
+    }
+
+    pub(crate) fn add_gate_to_copy_selection(&mut self, gate_id: GateId) {
+        let Some(gate) = self.placed_gates.iter().find(|gate| gate.id == gate_id) else {
+            return;
+        };
+        self.selected_gate_ids
+            .extend(connected_selection(&self.placed_gates, gate));
+        self.active_cell = Some(CircuitCell {
+            column: gate.column,
+            wire: gate.wire,
+        });
+    }
+
+    pub(crate) fn select_gate_alone(&mut self, gate_id: GateId) {
+        let Some(gate) = self.placed_gates.iter().find(|gate| gate.id == gate_id) else {
+            return;
+        };
+        self.selected_gate_ids = BTreeSet::from([gate_id]);
+        self.active_cell = Some(CircuitCell {
+            column: gate.column,
+            wire: gate.wire,
+        });
+    }
+
+    pub(crate) fn handle_circuit_edit_shortcuts(&mut self, ctx: &eframe::egui::Context) {
         if ctx.wants_keyboard_input() {
             return;
         }
-        let copy = ctx.input_mut(|input| {
-            input.consume_key(eframe::egui::Modifiers::COMMAND, eframe::egui::Key::C)
+        let (select_all, copy, cut, paste, undo, redo, delete, escape) = ctx.input_mut(|input| {
+            let command = eframe::egui::Modifiers::COMMAND;
+            let command_shift = eframe::egui::Modifiers {
+                command: true,
+                shift: true,
+                ..Default::default()
+            };
+            let redo = input.consume_key(command_shift, eframe::egui::Key::Z)
+                || input.consume_key(command, eframe::egui::Key::Y);
+            (
+                input.consume_key(command, eframe::egui::Key::A),
+                input.consume_key(command, eframe::egui::Key::C),
+                input.consume_key(command, eframe::egui::Key::X),
+                input.consume_key(command, eframe::egui::Key::V),
+                input.consume_key(command, eframe::egui::Key::Z),
+                redo,
+                input.consume_key(eframe::egui::Modifiers::NONE, eframe::egui::Key::Delete)
+                    || input
+                        .consume_key(eframe::egui::Modifiers::NONE, eframe::egui::Key::Backspace),
+                input.consume_key(eframe::egui::Modifiers::NONE, eframe::egui::Key::Escape),
+            )
         });
-        let paste = ctx.input_mut(|input| {
-            input.consume_key(eframe::egui::Modifiers::COMMAND, eframe::egui::Key::V)
-        });
+        if select_all {
+            self.select_all_gates();
+        }
         if copy {
             self.copy_selected_gates();
         }
+        if cut {
+            self.copy_selected_gates();
+            self.delete_selected_gates(ctx);
+        }
         if paste {
             self.paste_copied_gates(ctx);
+        }
+        if undo {
+            self.undo_circuit(ctx);
+        }
+        if redo {
+            self.redo_circuit(ctx);
+        }
+        if delete {
+            self.delete_selected_gates(ctx);
+        }
+        if escape {
+            self.selected_gate_ids.clear();
+            self.active_cell = None;
+            ctx.request_repaint();
         }
     }
 
@@ -295,13 +374,19 @@ impl super::QniApp {
             return;
         };
         self.circuit_clipboard = Some(fragment);
+        self.active_cell = selection_paste_anchor(&self.placed_gates, &self.selected_gate_ids);
+    }
+
+    fn select_all_gates(&mut self) {
+        self.selected_gate_ids = self.placed_gates.iter().map(|gate| gate.id).collect();
+        self.active_cell = selection_paste_anchor(&self.placed_gates, &self.selected_gate_ids);
     }
 
     fn paste_copied_gates(&mut self, ctx: &eframe::egui::Context) {
         if self.library.active_locked() {
             return;
         }
-        let (Some(fragment), Some(anchor)) = (&self.circuit_clipboard, self.paste_anchor) else {
+        let (Some(fragment), Some(anchor)) = (&self.circuit_clipboard, self.active_cell) else {
             return;
         };
         let Some(insert_column) = anchor.column.checked_add(1) else {
@@ -320,6 +405,23 @@ impl super::QniApp {
 
         self.begin_circuit_commit();
         self.placed_gates = next_gates;
+        self.update_qubit_count();
+        if self.commit_current_circuit(ctx) {
+            self.gpu_plan.mark_dirty();
+            self.clear_gpu_plan_capacity_error();
+        }
+    }
+
+    fn delete_selected_gates(&mut self, ctx: &eframe::egui::Context) {
+        if self.library.active_locked() || self.selected_gate_ids.is_empty() {
+            return;
+        }
+        self.begin_circuit_commit();
+        self.placed_gates
+            .retain(|gate| !self.selected_gate_ids.contains(&gate.id));
+        self.selected_gate_ids.clear();
+        self.active_cell = None;
+        self.compact_empty_steps();
         self.update_qubit_count();
         if self.commit_current_circuit(ctx) {
             self.gpu_plan.mark_dirty();
@@ -407,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn fragment_preserves_gaps_between_selected_columns() {
+    fn fragment_removes_gaps_between_selected_columns() {
         let gates = vec![gate(1, GateKind::H, 2, 1), gate(2, GateKind::X, 4, 2)];
         let fragment = CircuitFragment::from_selection(
             &gates,
@@ -415,7 +517,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(fragment.width, 3);
+        assert_eq!(fragment.width, 2);
     }
 
     #[test]
@@ -455,7 +557,7 @@ mod tests {
                 .iter()
                 .map(|gate| (gate.column_offset, gate.wire_offset))
                 .collect::<Vec<_>>(),
-            vec![(0, 0), (2, 1)]
+            vec![(0, 0), (1, 1)]
         );
     }
 
