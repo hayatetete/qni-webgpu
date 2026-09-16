@@ -72,10 +72,7 @@ impl QniApp {
         // qni's `circuit-step::after` data-active / data-breakpoint
         // styling.
         let paste_preview = self.paste_preview();
-        if paste_preview.is_none()
-            && !metrics.line_ys.is_empty()
-            && !metrics.slot_centers.is_empty()
-        {
+        if !metrics.line_ys.is_empty() && !metrics.slot_centers.is_empty() {
             let top = metrics.line_ys[0] - crate::constants::LINE_GAP * 0.5;
             let bot = metrics.line_ys[metrics.line_ys.len() - 1] + crate::constants::LINE_GAP * 0.5;
             let step_line = |painter: &egui::Painter, slot: usize, alpha: u8| {
@@ -203,10 +200,10 @@ mod tests {
 
     #[test]
     fn paste_caret_alternates_each_blink_interval() {
-        assert!(super::paste_caret_visible(0.0));
-        assert!(super::paste_caret_visible(0.52));
-        assert!(!super::paste_caret_visible(0.53));
-        assert!(super::paste_caret_visible(1.06));
+        assert_eq!(
+            [0.0, 0.52, 0.53, 1.06].map(super::paste_caret_visible),
+            [true, true, false, true]
+        );
     }
 
     #[test]
