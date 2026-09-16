@@ -11,10 +11,10 @@ use crate::constants::{CIRCUIT_PADDING, GATE_SIZE, LINE_GAP, LINE_Y, REM};
 use crate::layout::{nearest_slot_index, LayoutMetrics};
 
 const SLOT_CENTER_EPSILON: f32 = 0.5;
-const PASTE_CARET_BLINK_SECS: f64 = 0.53;
+const PASTE_MARKER_BLINK_SECS: f64 = 0.53;
 
-fn paste_caret_visible(time: f64) -> bool {
-    ((time / PASTE_CARET_BLINK_SECS).floor() as i64) % 2 == 0
+fn paste_marker_visible(time: f64) -> bool {
+    ((time / PASTE_MARKER_BLINK_SECS).floor() as i64) % 2 == 0
 }
 
 pub(super) fn gate_slot_index_for_render(
@@ -104,7 +104,7 @@ impl QniApp {
         if let Some((anchor, (width, height))) = paste_preview {
             painter
                 .ctx()
-                .request_repaint_after(Duration::from_secs_f64(PASTE_CARET_BLINK_SECS));
+                .request_repaint_after(Duration::from_secs_f64(PASTE_MARKER_BLINK_SECS));
             let insert_column = anchor.column.as_usize().saturating_add(1);
             if let (Some(&anchor_x), Some(&anchor_y)) = (
                 metrics.slot_centers.get(anchor.column.as_usize()),
@@ -115,7 +115,7 @@ impl QniApp {
                     + crate::constants::LINE_GAP * height.saturating_sub(1) as f32
                     + GATE_SIZE * 0.5;
                 let time = painter.ctx().input(|input| input.time);
-                if paste_caret_visible(time) {
+                if paste_marker_visible(time) {
                     painter.line_segment(
                         [
                             egui::pos2(marker_x, circuit_origin.y + anchor_y - GATE_SIZE * 0.5),
@@ -199,9 +199,9 @@ mod tests {
     use crate::layout::layout_metrics;
 
     #[test]
-    fn paste_caret_alternates_each_blink_interval() {
+    fn paste_marker_alternates_each_blink_interval() {
         assert_eq!(
-            [0.0, 0.52, 0.53, 1.06].map(super::paste_caret_visible),
+            [0.0, 0.52, 0.53, 1.06].map(super::paste_marker_visible),
             [true, true, false, true]
         );
     }

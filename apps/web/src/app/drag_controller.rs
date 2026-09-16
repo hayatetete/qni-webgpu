@@ -103,7 +103,7 @@ fn step_at_cursor(cursor: egui::Pos2, metrics: &LayoutMetrics) -> Option<Circuit
 
 /// Resolve clicks inside a 40 px circuit dropzone to semantic grid state.
 /// Inter-step bars and the exposed wire between dropzones are deliberately
-/// excluded so their existing interactions do not move the paste caret.
+/// excluded so their existing interactions do not move the paste marker.
 fn circuit_cell_at_cursor(cursor: egui::Pos2, metrics: &LayoutMetrics) -> Option<CircuitCell> {
     let (column, column_distance) = nearest_slot_index(cursor.x, &metrics.slot_centers)?;
     let (_, wire_distance, wire) = nearest_line(cursor.y, &metrics.line_ys);

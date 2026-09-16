@@ -227,7 +227,7 @@ fn start_intent(
     }
 
     // No gate / palette / empty dropzone under the cursor. If we're inside a
-    // step slot, lock the breakpoint to that column without moving the caret.
+    // step slot, lock the breakpoint to that column without moving the paste marker.
     if let Some(step) = step_at_cursor(cursor, &geometry.metrics) {
         return DragStartIntent::BreakpointStep(step);
     }
