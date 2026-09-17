@@ -10,9 +10,11 @@ mod resize;
 mod scroll;
 mod start;
 
+use std::collections::BTreeSet;
+
 use eframe::egui;
 
-use super::{circuit_clipboard::CircuitCell, CircuitColumnIndex, QniApp, WireIndex};
+use super::{circuit_clipboard::CircuitCell, CircuitColumnIndex, GateId, QniApp, WireIndex};
 use crate::constants::{GATE_SIZE, LINE_GAP, PALETTE_ROW_Y, SLOT_SPACING};
 use crate::layout::{
     layout_metrics, nearest_line, nearest_slot_index, palette_layout, palette_start_x,
@@ -67,12 +69,12 @@ impl CircuitInputGeometry {
 
 pub(super) struct DragController;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct SelectionDrag {
     start: egui::Pos2,
     current: egui::Pos2,
     click_cell: Option<CircuitCell>,
-    additive: bool,
+    initial_selection: BTreeSet<GateId>,
 }
 
 const SELECTION_DRAG_THRESHOLD: f32 = 4.0;
@@ -133,7 +135,9 @@ impl DragController {
             start,
             current: start,
             click_cell,
-            additive,
+            initial_selection: additive
+                .then(|| app.selected_gate_ids.clone())
+                .unwrap_or_default(),
         });
     }
 
@@ -142,12 +146,11 @@ impl DragController {
         pointer: DragPointer,
         ctx: &egui::Context,
     ) -> bool {
-        let Some(mut drag) = app.selection_drag else {
+        let Some(mut drag) = app.selection_drag.take() else {
             return false;
         };
         if let Some(pos) = pointer.local_pos {
             drag.current = pos;
-            app.selection_drag = Some(drag);
         }
         if pointer.released {
             app.selection_drag = None;
@@ -159,31 +162,37 @@ impl DragController {
                     app.active_cell = None;
                 }
             } else {
-                let selection_rect = egui::Rect::from_two_pos(drag.start, drag.current);
-                if !drag.additive {
-                    app.selected_gate_ids.clear();
-                }
-                app.selected_gate_ids.extend(
-                    app.placed_gates
-                        .iter()
-                        .filter(|gate| {
-                            crate::layout::gate_visible_rect(gate, gate.pos)
-                                .intersects(selection_rect)
-                        })
-                        .map(|gate| gate.id),
-                );
+                update_rect_selection(app, &drag);
             }
             ctx.request_repaint();
         } else {
+            if drag.start.distance(drag.current) > SELECTION_DRAG_THRESHOLD {
+                update_rect_selection(app, &drag);
+            }
+            app.selection_drag = Some(drag);
             ctx.request_repaint();
         }
         true
     }
 }
 
+fn update_rect_selection(app: &mut QniApp, drag: &SelectionDrag) {
+    let selection_rect = egui::Rect::from_two_pos(drag.start, drag.current);
+    app.selected_gate_ids = drag.initial_selection.clone();
+    app.selected_gate_ids.extend(
+        app.placed_gates
+            .iter()
+            .filter(|gate| {
+                crate::layout::gate_visible_rect(gate, gate.pos).intersects(selection_rect)
+            })
+            .map(|gate| gate.id),
+    );
+}
+
 impl QniApp {
     pub(crate) fn selection_drag_rect(&self) -> Option<egui::Rect> {
         self.selection_drag
+            .as_ref()
             .filter(|drag| drag.start.distance(drag.current) > SELECTION_DRAG_THRESHOLD)
             .map(|drag| egui::Rect::from_two_pos(drag.start, drag.current))
     }

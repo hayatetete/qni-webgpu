@@ -209,15 +209,15 @@ test('Ctrl+Z and Ctrl+Y undo and redo one paste', async ({ page }) => {
   )
 })
 
-test('dragging from an empty cell selects every touched gate', async ({ page }) => {
+test('dragging from an empty cell selects every touched gate before release', async ({ page }) => {
   await openCircuit(page, '{"cols":[["H"],["X"],["Z"]]}')
   const start = await circuitCellPoint(page, 0, 1)
   const end = await circuitCellPoint(page, 2, 0)
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
   await page.mouse.move(end.x, end.y, { steps: 8 })
-  await page.mouse.up()
   await pressShortcut(page, 'Control+C')
+  await page.mouse.up()
   await pressShortcut(page, 'Control+V')
 
   expect(await waitForCircuitJson(page, '{"cols":[["H"],["X"],["Z"],["H"],["X"],["Z"]]}')).toBe(
