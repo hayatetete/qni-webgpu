@@ -1,8 +1,6 @@
 //! Circuit area drawing — qubit lines, placed gates, palette, drag
 //! preview. Independent of the state-vector panel.
 
-use std::time::Duration;
-
 use eframe::egui;
 
 use crate::app::{GateId, PlacedGate, QniApp};
@@ -11,11 +9,7 @@ use crate::constants::{CIRCUIT_PADDING, GATE_SIZE, LINE_GAP, LINE_Y, REM};
 use crate::layout::{nearest_slot_index, LayoutMetrics};
 
 const SLOT_CENTER_EPSILON: f32 = 0.5;
-const PASTE_MARKER_BLINK_SECS: f64 = 0.53;
-
-fn paste_marker_visible(time: f64) -> bool {
-    ((time / PASTE_MARKER_BLINK_SECS).floor() as i64) % 2 == 0
-}
+const PASTE_GHOST_PADDING: f32 = 8.0; // Tailwind spacing-2.
 
 pub(super) fn gate_slot_index_for_render(
     gate: &PlacedGate,
@@ -102,29 +96,8 @@ impl QniApp {
         }
 
         if let Some((anchor, (width, height))) = paste_preview {
-            painter
-                .ctx()
-                .request_repaint_after(Duration::from_secs_f64(PASTE_MARKER_BLINK_SECS));
             let insert_column = anchor.column.as_usize().saturating_add(1);
-            if let (Some(&anchor_x), Some(&anchor_y)) = (
-                metrics.slot_centers.get(anchor.column.as_usize()),
-                metrics.line_ys.get(anchor.wire.as_usize()),
-            ) {
-                let marker_x = circuit_origin.x + anchor_x + crate::constants::SLOT_SPACING * 0.5;
-                let marker_bottom = anchor_y
-                    + crate::constants::LINE_GAP * height.saturating_sub(1) as f32
-                    + GATE_SIZE * 0.5;
-                let time = painter.ctx().input(|input| input.time);
-                if paste_marker_visible(time) {
-                    painter.line_segment(
-                        [
-                            egui::pos2(marker_x, circuit_origin.y + anchor_y - GATE_SIZE * 0.5),
-                            egui::pos2(marker_x, circuit_origin.y + marker_bottom),
-                        ],
-                        egui::Stroke::new(2.0_f32, colors.semantic_on),
-                    );
-                }
-
+            if let Some(&anchor_y) = metrics.line_ys.get(anchor.wire.as_usize()) {
                 if let Some(&insert_x) = metrics.slot_centers.get(insert_column) {
                     let preview = egui::Rect::from_min_size(
                         circuit_origin
@@ -135,7 +108,8 @@ impl QniApp {
                             GATE_SIZE
                                 + crate::constants::LINE_GAP * height.saturating_sub(1) as f32,
                         ),
-                    );
+                    )
+                    .expand(PASTE_GHOST_PADDING);
                     painter.rect_filled(
                         preview,
                         egui::CornerRadius::same(4),
@@ -143,21 +117,6 @@ impl QniApp {
                     );
                 }
             }
-        }
-
-        if let Some(selection_rect) = self.selection_drag_rect() {
-            let selection_rect = selection_rect.translate(circuit_origin.to_vec2());
-            painter.rect_filled(
-                selection_rect,
-                egui::CornerRadius::ZERO,
-                with_alpha(colors.semantic_on, 31),
-            );
-            painter.rect_stroke(
-                selection_rect,
-                egui::CornerRadius::ZERO,
-                egui::Stroke::new(1.0_f32, colors.semantic_on),
-                egui::StrokeKind::Inside,
-            );
         }
 
         self.draw_circuit_connectors(painter, metrics, colors, circuit_origin, dragging_gate_id);
@@ -174,6 +133,23 @@ impl QniApp {
         // this after the callbacks washes out the display and leaves only
         // its frame visibly intact during paste feedback.
         self.draw_circuit_gpu_overlays(painter, rect, circuit_origin, dragging_gate_id, colors);
+
+        // Selection rubber-band is interaction chrome, so it must stay above
+        // opaque and GPU-backed gate bodies alike.
+        if let Some(selection_rect) = self.selection_drag_rect() {
+            let selection_rect = selection_rect.translate(circuit_origin.to_vec2());
+            painter.rect_filled(
+                selection_rect,
+                egui::CornerRadius::ZERO,
+                with_alpha(colors.semantic_on, 31),
+            );
+            painter.rect_stroke(
+                selection_rect,
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(1.0_f32, colors.semantic_on),
+                egui::StrokeKind::Inside,
+            );
+        }
 
         for (index, &line_y) in metrics.line_ys.iter().enumerate() {
             // Labels live in circuit space (anchored to the wire's
@@ -200,14 +176,6 @@ mod tests {
     use crate::constants::SLOT_SPACING;
     use crate::gates::GateKind;
     use crate::layout::layout_metrics;
-
-    #[test]
-    fn paste_marker_alternates_each_blink_interval() {
-        assert_eq!(
-            [0.0, 0.52, 0.53, 1.06].map(super::paste_marker_visible),
-            [true, true, false, true]
-        );
-    }
 
     #[test]
     fn dragged_insert_preview_does_not_join_slot_connector() {
