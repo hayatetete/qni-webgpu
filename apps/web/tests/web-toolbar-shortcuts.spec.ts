@@ -8,6 +8,8 @@ type ShortcutGeometry = {
   bottom: number
   hovered: boolean
   open: boolean
+  popoverRight: number | null
+  columnLefts: [number, number, number, number] | null
 }
 
 const geometry = async (page: Page): Promise<ShortcutGeometry> => {
@@ -48,4 +50,24 @@ test('keyboard shortcut trigger exposes its English tooltip', async ({ page }) =
   expect(await page.evaluate(() => (window as any).__qniToolbarTooltipText)).toBe(
     'Keyboard shortcuts',
   )
+})
+
+test('keyboard shortcut popover aligns with the trigger right edge', async ({ page }) => {
+  const point = await triggerCenter(page)
+  await page.locator('#egui-canvas').click({ position: point })
+  await page.waitForTimeout(100)
+  const rect = await geometry(page)
+
+  expect(Math.abs((rect.popoverRight ?? 0) - rect.right)).toBeLessThan(0.25)
+})
+
+test('keyboard shortcut values align with their column headings', async ({ page }) => {
+  const point = await triggerCenter(page)
+  await page.locator('#egui-canvas').click({ position: point })
+  await page.waitForTimeout(100)
+  const lefts = (await geometry(page)).columnLefts
+  if (!lefts) throw new Error('expected shortcut column geometry')
+  const [windows, control, macos, command] = lefts
+
+  expect([Math.abs(windows - control), Math.abs(macos - command)]).toEqual([0, 0])
 })

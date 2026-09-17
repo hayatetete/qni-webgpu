@@ -14,10 +14,10 @@ mod rename;
 use action::PickerAction;
 use chrome::{
     apply_items_scrollbar_style, footer, paint_divider, paint_kebab, paint_picker_item_text,
-    paint_resize_separator, paint_section_header, publish_picker_dropdown_geometry_json,
+    paint_resize_separator, publish_picker_dropdown_geometry_json,
     publish_picker_resize_geometry_json, publish_picker_submenu_geometry_json, submenu_item,
 };
-pub(crate) use chrome::{paint_chevron, popover_frame};
+pub(crate) use chrome::{paint_chevron, paint_section_header, popover_frame};
 use constants::*;
 
 const EXAMPLE_CIRCUITS_LABEL: &str = "EXAMPLE CIRCUITS";

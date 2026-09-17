@@ -4,20 +4,19 @@ use crate::app::{ExecMode, ExternalGpuStatus, QniApp};
 use crate::colors::{with_alpha, Colors};
 use crate::constants::SECTION_DIVIDER_WIDTH;
 
-use super::circuit_picker::{paint_chevron, popover_frame};
+use super::circuit_picker::{paint_chevron, paint_section_header, popover_frame};
 use super::gpu_status_pill::gpu_status_pill;
 
 const TOOL_SIZE: egui::Vec2 = egui::vec2(32.0, 32.0); // w-8 / h-8 = 32×32 square.
 const ICON_SIZE: egui::Vec2 = egui::vec2(18.0, 18.0); // Lucide 24×24 viewBox scaled to 18px.
 const KEYBOARD_SHORTCUTS_TOOLTIP: &str = "Keyboard shortcuts";
-const SHORTCUT_ROWS: [(&str, &str, &str); 9] = [
+const SHORTCUT_ROWS: [(&str, &str, &str); 8] = [
     ("Select all", "Ctrl+A", "Cmd+A"),
     ("Cut", "Ctrl+X", "Cmd+X"),
     ("Copy", "Ctrl+C", "Cmd+C"),
     ("Paste", "Ctrl+V", "Cmd+V"),
     ("Undo", "Ctrl+Z", "Cmd+Z"),
-    ("Redo", "Ctrl+Y", "Cmd+Y"),
-    ("Redo", "Ctrl+Shift+Z", "Shift+Cmd+Z"),
+    ("Redo", "Ctrl+Y / Ctrl+Shift+Z", "Shift+Cmd+Z"),
     ("Delete", "Delete", "Delete"),
     ("Clear selection / marker", "Esc", "Esc"),
 ];
@@ -91,72 +90,95 @@ impl QniApp {
         }
 
         let viewport = ctx.content_rect();
-        let width = 384.0_f32.min((viewport.width() - 32.0).max(0.0));
-        let left = (trigger_rect.right() - width)
-            .clamp(viewport.left() + 16.0, viewport.right() - width - 16.0);
+        let width = 496.0_f32.min((viewport.width() - 32.0).max(0.0));
+        let mut shortcut_column_lefts = None;
         let area = egui::Area::new(egui::Id::new("shortcut_help_popover"))
             .order(egui::Order::Tooltip)
-            .fixed_pos(egui::pos2(left, trigger_rect.bottom() + 6.0))
+            .pivot(egui::Align2::RIGHT_TOP)
+            .fixed_pos(egui::pos2(trigger_rect.right(), trigger_rect.bottom() + 6.0))
             .show(ctx, |ui| {
                 popover_frame(colors).show(ui, |ui| {
-                    ui.set_width(width - 12.0);
+                    ui.set_width(width - 20.0);
                     egui::Frame::new()
-                        .inner_margin(egui::Margin::same(12))
+                        .inner_margin(egui::Margin::same(16)) // p-4 = 16px.
                         .show(ui, |ui| {
-                            ui.spacing_mut().item_spacing.y = 6.0;
-                            ui.label(
-                                egui::RichText::new("Keyboard shortcuts")
-                                    .size(14.0)
-                                    .strong()
-                                    .color(colors.text_strong),
-                            );
-                            ui.add_space(4.0);
-                            egui::Grid::new("shortcut_help_grid")
-                                .num_columns(4)
-                                .spacing(egui::vec2(8.0, 6.0))
+                            ui.spacing_mut().item_spacing.y = 8.0; // gap-2 = 8px.
+                            paint_section_header(ui, colors, "KEYBOARD SHORTCUTS", false);
+                            ui.add_space(8.0); // spacing-2 between heading and table.
+                            let mut divider_x = [0.0_f32; 2];
+                            let grid = egui::Grid::new("shortcut_help_grid")
+                                .num_columns(3)
+                                .spacing(egui::vec2(16.0, 8.0)) // gap-x-4 / gap-y-2.
                                 .show(ui, |ui| {
                                     ui.label("");
-                                    ui.label(
+                                    let windows = ui.label(
                                         egui::RichText::new("Windows / Linux")
                                             .size(12.0)
-                                            .color(colors.text),
+                                            .color(colors.text_strong),
                                     );
-                                    ui.label("");
-                                    ui.label(
-                                        egui::RichText::new("macOS").size(12.0).color(colors.text),
+                                    let macos = ui.label(
+                                        egui::RichText::new("macOS")
+                                            .size(12.0)
+                                            .color(colors.text_strong),
                                     );
+                                    divider_x =
+                                        [windows.rect.left() - 8.0, macos.rect.left() - 8.0];
                                     ui.end_row();
-                                    for (label, control, command) in SHORTCUT_ROWS {
+                                    for (row, (label, control, command)) in
+                                        SHORTCUT_ROWS.iter().enumerate()
+                                    {
                                         ui.label(
-                                            egui::RichText::new(label)
+                                            egui::RichText::new(*label)
                                                 .size(14.0)
                                                 .color(colors.text),
                                         );
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                ui.label(
-                                                    egui::RichText::new(control)
-                                                        .monospace()
-                                                        .size(14.0)
-                                                        .color(colors.text),
-                                                );
-                                            },
-                                        );
-                                        ui.label(
-                                            egui::RichText::new("/").size(14.0).color(colors.label),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(command)
+                                        let control = ui.label(
+                                            egui::RichText::new(*control)
+                                                .monospace()
                                                 .size(14.0)
                                                 .color(colors.text),
                                         );
+                                        let command = ui.label(
+                                            egui::RichText::new(*command)
+                                                .monospace()
+                                                .size(14.0)
+                                                .color(colors.text),
+                                        );
+                                        if row == 0 {
+                                            shortcut_column_lefts = Some([
+                                                windows.rect.left(),
+                                                control.rect.left(),
+                                                macos.rect.left(),
+                                                command.rect.left(),
+                                            ]);
+                                        }
                                         ui.end_row();
                                     }
                                 });
+                            for x in divider_x {
+                                ui.painter().line_segment(
+                                    [
+                                        egui::pos2(x, grid.response.rect.top()),
+                                        egui::pos2(x, grid.response.rect.bottom()),
+                                    ],
+                                    egui::Stroke::new(1.0_f32, colors.line),
+                                );
+                            }
                         });
                 });
             });
+        publish_shortcut_help_debug_json(
+            trigger_rect,
+            ctx.input(|input| {
+                input
+                    .pointer
+                    .hover_pos()
+                    .is_some_and(|pos| trigger_rect.contains(pos))
+            }),
+            true,
+            Some(area.response.rect.right()),
+            shortcut_column_lefts,
+        );
         self.picker_overlay_rect = Some(area.response.rect);
         if ctx.input(|input| input.pointer.any_pressed())
             && ctx
@@ -343,14 +365,28 @@ fn shortcut_help_trigger(ui: &mut egui::Ui, colors: &Colors, open: bool) -> egui
             KEYBOARD_SHORTCUTS_TOOLTIP,
         )
     });
-    publish_shortcut_help_debug_json(rect, response.hovered(), open);
+    publish_shortcut_help_debug_json(rect, response.hovered(), open, None, None);
     response
 }
 
 #[cfg(all(target_arch = "wasm32", debug_assertions))]
-fn publish_shortcut_help_debug_json(rect: egui::Rect, hovered: bool, open: bool) {
+fn publish_shortcut_help_debug_json(
+    rect: egui::Rect,
+    hovered: bool,
+    open: bool,
+    popover_right: Option<f32>,
+    column_lefts: Option<[f32; 4]>,
+) {
+    let popover_right = popover_right
+        .map(|right| format!("{right:.3}"))
+        .unwrap_or_else(|| "null".to_owned());
+    let column_lefts = column_lefts
+        .map(|[windows, control, macos, command]| {
+            format!("[{windows:.3},{control:.3},{macos:.3},{command:.3}]")
+        })
+        .unwrap_or_else(|| "null".to_owned());
     let json = format!(
-        "{{\"left\":{:.3},\"right\":{:.3},\"top\":{:.3},\"bottom\":{:.3},\"hovered\":{hovered},\"open\":{open}}}",
+        "{{\"left\":{:.3},\"right\":{:.3},\"top\":{:.3},\"bottom\":{:.3},\"hovered\":{hovered},\"open\":{open},\"popoverRight\":{popover_right},\"columnLefts\":{column_lefts}}}",
         rect.left(),
         rect.right(),
         rect.top(),
@@ -369,7 +405,14 @@ fn publish_shortcut_help_debug_json(rect: egui::Rect, hovered: bool, open: bool)
 }
 
 #[cfg(any(not(target_arch = "wasm32"), not(debug_assertions)))]
-fn publish_shortcut_help_debug_json(_rect: egui::Rect, _hovered: bool, _open: bool) {}
+fn publish_shortcut_help_debug_json(
+    _rect: egui::Rect,
+    _hovered: bool,
+    _open: bool,
+    _popover_right: Option<f32>,
+    _column_lefts: Option<[f32; 4]>,
+) {
+}
 
 #[derive(Clone, Copy)]
 struct ButtonState {

@@ -230,7 +230,7 @@ pub(super) fn paint_picker_item_text(
     );
 }
 
-pub(super) fn paint_section_header(
+pub(crate) fn paint_section_header(
     ui: &mut egui::Ui,
     colors: &Colors,
     label: &'static str,
