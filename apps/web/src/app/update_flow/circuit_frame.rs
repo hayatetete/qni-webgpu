@@ -20,12 +20,16 @@ impl QniApp {
             dragging_gate_id: None,
             live_drag_gpu_overlay_ready: false,
         };
+        let pointer_pos = ctx.input(|input| input.pointer.latest_pos());
+        let pointer_over_picker = self
+            .picker_overlay_rect
+            .is_some_and(|picker_rect| pointer_pos.is_some_and(|pos| picker_rect.contains(pos)));
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .scroll_source(egui::scroll_area::ScrollSource {
                 drag: false,
-                mouse_wheel: !pointer_over_state_panel,
+                mouse_wheel: !pointer_over_state_panel && !pointer_over_picker,
                 scroll_bar: true,
             })
             .show(ui, |ui| {
@@ -58,10 +62,6 @@ impl QniApp {
                     frame_state.dragging_gate_id,
                     self.circuit_scroll_x,
                 );
-                let pointer_pos = ctx.input(|input| input.pointer.latest_pos());
-                let pointer_over_picker = self.picker_overlay_rect.is_some_and(|picker_rect| {
-                    pointer_pos.is_some_and(|pos| picker_rect.contains(pos))
-                });
                 self.show_angle_input_overlay(
                     ui,
                     rect,
