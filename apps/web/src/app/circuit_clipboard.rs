@@ -257,6 +257,38 @@ fn connected_selection(
     connected.into_iter().map(|gate| gate.id).collect()
 }
 
+pub(crate) fn gate_frame_group(placed_gates: &[PlacedGate], gate_id: GateId) -> BTreeSet<GateId> {
+    placed_gates
+        .iter()
+        .find(|gate| gate.id == gate_id)
+        .map(|gate| connected_selection(placed_gates, gate))
+        .unwrap_or_default()
+}
+
+pub(crate) fn selection_frame_groups(
+    placed_gates: &[PlacedGate],
+    selected_gate_ids: &BTreeSet<GateId>,
+) -> Vec<BTreeSet<GateId>> {
+    let mut remaining = selected_gate_ids.clone();
+    let mut groups = Vec::new();
+    for gate in placed_gates {
+        if !remaining.remove(&gate.id) {
+            continue;
+        }
+        let connected = connected_selection(placed_gates, gate);
+        let group = if connected.len() > 1 && connected.is_subset(selected_gate_ids) {
+            connected
+        } else {
+            BTreeSet::from([gate.id])
+        };
+        for gate_id in &group {
+            remaining.remove(gate_id);
+        }
+        groups.push(group);
+    }
+    groups
+}
+
 fn is_control_target(kind: GateKind) -> bool {
     !matches!(
         kind,
@@ -793,6 +825,52 @@ mod tests {
         assert_eq!(
             connected_selection(&gates, &gates[0]),
             BTreeSet::from([GateId::from_u32(1)])
+        );
+    }
+
+    #[test]
+    fn controlled_gate_selection_uses_one_frame_group() {
+        let gates = vec![
+            gate(1, GateKind::Control, 0, 0),
+            gate(2, GateKind::Control, 0, 1),
+            gate(3, GateKind::X, 0, 2),
+        ];
+        let selected = BTreeSet::from([
+            GateId::from_u32(1),
+            GateId::from_u32(2),
+            GateId::from_u32(3),
+        ]);
+
+        assert_eq!(selection_frame_groups(&gates, &selected), vec![selected]);
+    }
+
+    #[test]
+    fn individually_selected_control_keeps_one_gate_frame() {
+        let gates = vec![gate(1, GateKind::Control, 0, 0), gate(2, GateKind::X, 0, 1)];
+        let selected = BTreeSet::from([GateId::from_u32(1)]);
+
+        assert_eq!(selection_frame_groups(&gates, &selected), vec![selected]);
+    }
+
+    #[test]
+    fn swap_selection_uses_one_frame_group() {
+        let gates = vec![gate(1, GateKind::Swap, 0, 0), gate(2, GateKind::Swap, 0, 2)];
+        let selected = BTreeSet::from([GateId::from_u32(1), GateId::from_u32(2)]);
+
+        assert_eq!(selection_frame_groups(&gates, &selected), vec![selected]);
+    }
+
+    #[test]
+    fn unrelated_selected_gates_keep_individual_frame_groups() {
+        let gates = vec![gate(1, GateKind::H, 0, 0), gate(2, GateKind::X, 1, 1)];
+        let selected = BTreeSet::from([GateId::from_u32(1), GateId::from_u32(2)]);
+
+        assert_eq!(
+            selection_frame_groups(&gates, &selected),
+            vec![
+                BTreeSet::from([GateId::from_u32(1)]),
+                BTreeSet::from([GateId::from_u32(2)])
+            ]
         );
     }
 

@@ -1,11 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
+  pixelRgbDistance,
+  sampleCanvasPixels,
   UI_CONSTANTS,
   waitForStartupReady,
 } from './support/web-spec-helpers'
 
 const EGUI_PANEL_MARGIN = 8
 const CIRCUIT_PICKER_TOOLBAR_SHIFT = 98
+const SELECTION_BORDER: [number, number, number, number] = [32, 94, 166, 255]
+const HOVER_BORDER: [number, number, number, number] = [139, 126, 200, 255]
 
 // These interaction tests share a software WebGPU adapter. Running them in one
 // worker avoids frame starvation changing the ordering of pointer/key events.
@@ -95,6 +99,36 @@ test('copying either side of a CNOT preserves the controlled structure', async (
   expect(await waitForCircuitJson(page, '{"cols":[["•",1,"X"],["•",1,"X"]]}')).toBe(
     '{"cols":[["•",1,"X"],["•",1,"X"]]}',
   )
+})
+
+test('a controlled operation uses one selection frame', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["•",1,"X"]]}')
+  const control = await circuitCellPoint(page, 0, 0)
+  const center = await circuitCellPoint(page, 0, 1)
+  const probe = {
+    name: 'groupFrame',
+    x: center.x + UI_CONSTANTS.GATE_SIZE / 2 + 3,
+    y: center.y,
+  }
+
+  await page.mouse.move(control.x, control.y)
+  const hovered = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
+  expect(pixelRgbDistance(hovered.groupFrame, HOVER_BORDER)).toBeLessThan(48)
+
+  await page.mouse.click(control.x, control.y)
+  const selected = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
+
+  expect(pixelRgbDistance(selected.groupFrame, SELECTION_BORDER)).toBeLessThan(48)
+
+  await page.waitForTimeout(400)
+  await page.mouse.dblclick(control.x, control.y)
+  await expect.poll(async () => {
+    const individual = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
+    return Math.min(
+      pixelRgbDistance(individual.groupFrame, HOVER_BORDER),
+      pixelRgbDistance(individual.groupFrame, SELECTION_BORDER),
+    )
+  }).toBeGreaterThan(48)
 })
 
 test('copying one Swap symbol preserves its pair', async ({ page }) => {

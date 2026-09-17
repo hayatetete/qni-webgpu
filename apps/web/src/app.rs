@@ -31,6 +31,7 @@ use circuit_picker_state::PickerState;
 use eframe::egui;
 use std::collections::{BTreeSet, VecDeque};
 
+pub(crate) use circuit_clipboard::{gate_frame_group, selection_frame_groups};
 #[allow(unused_imports)]
 pub(crate) use circuit_model::{
     AngleAffordance, AngleEditor, CircuitColumnIndex, CircuitColumnIndexError, DragState, GateId,

@@ -5,7 +5,7 @@ use std::time::Duration;
 use eframe::egui;
 use eframe::egui_wgpu;
 
-use crate::app::{GateId, QniApp};
+use crate::app::{gate_frame_group, selection_frame_groups, GateId, QniApp};
 use crate::colors::Colors;
 use crate::constants::{DRAG_REPAINT_MIN_SECS, GATE_SIZE, LINE_GAP};
 use crate::gates::GateKind;
@@ -157,11 +157,6 @@ impl QniApp {
             let body_rect = span_resize_body_rect(gate.kind, gate.span.get(), gate_rect);
             let measurement_has_slot =
                 gate.kind == GateKind::Measurement && self.gpu_plan.has_measurement_slot(gate.id);
-            let copy_strength = self
-                .copy_flash
-                .as_ref()
-                .filter(|_| editing_enabled)
-                .and_then(|flash| flash.strength(gate.id, now));
             let paste_strength = editing_enabled
                 .then(|| {
                     self.paste_flashes
@@ -187,35 +182,6 @@ impl QniApp {
                 // digit overlay so the hover side borders remain visible.
                 let mask_rect = gate_rect.expand2(egui::vec2(MEASUREMENT_WIRE_CLEARANCE, 0.0));
                 painter.rect_filled(mask_rect, egui::CornerRadius::ZERO, circuit_fill);
-            }
-            if !fast_drag && editing_enabled && self.hovered_gate_id == Some(gate.id) {
-                let hover_outer = body_rect.expand(4.0);
-                // 接続線はゲート本体の下に描く。ホバー枠の内側を背景色で
-                // 塗りつぶすと、Control / AntiControl / Swap / Phase などの
-                // 透明なゲート内部を通る縦接続線まで消えてしまうため、
-                // 回路上のホバーは全ゲートで内部を塗らない線だけのリングにする。
-                painter.rect_stroke(
-                    hover_outer,
-                    hover_frame_corner_radius(gate.kind),
-                    egui::Stroke::new(2.0, colors.gate_hover_border),
-                    egui::StrokeKind::Inside,
-                );
-            }
-            if !fast_drag
-                && editing_enabled
-                && self.selected_gate_ids.contains(&gate.id)
-            {
-                // Flexoki blue-600 via the semantic-on theme role. This
-                // persistent selection ring is distinct from purple hover.
-                let selection_color = copy_strength
-                    .map(|strength| colors.semantic_on.lerp_to_gamma(colors.surface, strength))
-                    .unwrap_or(colors.semantic_on);
-                painter.rect_stroke(
-                    body_rect.expand(4.0),
-                    hover_frame_corner_radius(gate.kind),
-                    egui::Stroke::new(2.0_f32, selection_color),
-                    egui::StrokeKind::Inside,
-                );
             }
             if matches!(gate.kind, GateKind::Write0 | GateKind::Write1) {
                 // Write gates have no fill, so the wire would otherwise show
@@ -269,6 +235,81 @@ impl QniApp {
                 // or before the first frame's GPU dispatch). Show the
                 // inactive tx-3 center dot via egui until the GPU overlay takes over.
                 draw_bloch_vector(painter, gate_rect, [0.0, 0.0, 0.0], gate_colors);
+            }
+        }
+        if !fast_drag && editing_enabled {
+            if let Some(hovered_gate_id) = self.hovered_gate_id {
+                let group = selection_frame_groups(&self.placed_gates, &self.selected_gate_ids)
+                    .into_iter()
+                    .find(|group| group.contains(&hovered_gate_id))
+                    .unwrap_or_else(|| gate_frame_group(&self.placed_gates, hovered_gate_id));
+                let gates = self
+                    .placed_gates
+                    .iter()
+                    .filter(|gate| group.contains(&gate.id))
+                    .collect::<Vec<_>>();
+                if let Some(first) = gates.first() {
+                    let frame_rect = gates.iter().fold(egui::Rect::NOTHING, |rect, gate| {
+                        let motion_x = self
+                            .circuit_motion_offset_x(gate.id, now)
+                            .unwrap_or_default();
+                        let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
+                        let gate_rect =
+                            gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
+                        rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
+                    });
+                    painter.rect_stroke(
+                        frame_rect.expand(4.0),
+                        hover_frame_corner_radius(first.kind),
+                        egui::Stroke::new(2.0_f32, colors.gate_hover_border),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+        }
+        if !fast_drag && editing_enabled {
+            for group in selection_frame_groups(&self.placed_gates, &self.selected_gate_ids) {
+                if dragging_gate_id.is_some_and(|gate_id| group.contains(&gate_id))
+                    || group
+                        .iter()
+                        .any(|&gate_id| self.paste_gate_hidden(gate_id, now))
+                {
+                    continue;
+                }
+                let gates = self
+                    .placed_gates
+                    .iter()
+                    .filter(|gate| group.contains(&gate.id))
+                    .collect::<Vec<_>>();
+                let Some(first) = gates.first() else {
+                    continue;
+                };
+                let frame_rect = gates.iter().fold(egui::Rect::NOTHING, |rect, gate| {
+                    let motion_x = self
+                        .circuit_motion_offset_x(gate.id, now)
+                        .unwrap_or_default();
+                    let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
+                    let gate_rect =
+                        gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
+                    rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
+                });
+                let copy_strength = gates
+                    .iter()
+                    .filter_map(|gate| {
+                        self.copy_flash
+                            .as_ref()
+                            .and_then(|flash| flash.strength(gate.id, now))
+                    })
+                    .reduce(f32::max);
+                let selection_color = copy_strength
+                    .map(|strength| colors.semantic_on.lerp_to_gamma(colors.surface, strength))
+                    .unwrap_or(colors.semantic_on);
+                painter.rect_stroke(
+                    frame_rect.expand(4.0),
+                    hover_frame_corner_radius(first.kind),
+                    egui::Stroke::new(2.0_f32, selection_color),
+                    egui::StrokeKind::Inside,
+                );
             }
         }
     }
