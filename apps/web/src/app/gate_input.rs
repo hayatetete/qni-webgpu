@@ -5,7 +5,7 @@ use eframe::egui;
 use std::time::Duration;
 
 use super::drag_controller::{CircuitInputGeometry, DragController, DragPointer};
-use super::QniApp;
+use super::{GateClickSelection, QniApp};
 use crate::constants::{
     DRAG_REPAINT_BASE_SECS, DRAG_REPAINT_MAX_SECS, DRAG_REPAINT_MIN_SECS, DRAG_REPAINT_PUMP_FACTOR,
 };
@@ -60,15 +60,18 @@ impl QniApp {
         if pointer_start {
             if let Some(gate_id) = pointer_gate_id {
                 let now = now_seconds();
-                let continues_click = self.gate_click_selection.as_ref().is_some_and(
-                    |(previous_gate_id, pressed_at, _)| {
-                        *previous_gate_id == gate_id
-                            && now - pressed_at <= DOUBLE_CLICK_SELECTION_WINDOW_SECS
-                    },
-                );
-                if !continues_click {
-                    self.gate_click_selection =
-                        Some((gate_id, now, self.selected_gate_ids.clone()));
+                if let Some(click) = self.gate_click_selection.as_mut().filter(|click| {
+                    click.gate_id == gate_id
+                        && now - click.pressed_at <= DOUBLE_CLICK_SELECTION_WINDOW_SECS
+                }) {
+                    click.repeated_same_gate = true;
+                } else {
+                    self.gate_click_selection = Some(GateClickSelection {
+                        gate_id,
+                        pressed_at: now,
+                        selected_gate_ids: self.selected_gate_ids.clone(),
+                        repeated_same_gate: false,
+                    });
                 }
             }
         }
@@ -177,11 +180,12 @@ impl QniApp {
             let selection = self
                 .gate_click_selection
                 .take()
-                .filter(|(clicked_gate_id, _, _)| *clicked_gate_id == gate_id)
-                .map(|(_, _, selection)| selection)
-                .unwrap_or_default();
-            self.select_gate_individually(gate_id, selection);
-            ctx.request_repaint();
+                .filter(|click| click.gate_id == gate_id && click.repeated_same_gate)
+                .map(|click| click.selected_gate_ids);
+            if let Some(selection) = selection {
+                self.select_gate_individually(gate_id, selection);
+                ctx.request_repaint();
+            }
         }
         DragController::set_cursor_icon(self, drag_pointer, ctx);
     }

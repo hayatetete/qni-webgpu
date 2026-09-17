@@ -167,6 +167,18 @@ test('clicking another gate moves the paste anchor without replacing the clipboa
   )
 })
 
+test('quick clicks on different gates do not create an additive selection', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["X"]]}')
+  await clickGate(page, 0, 0)
+  await clickGate(page, 1, 0)
+  await pressShortcut(page, 'Control+C')
+  await pressShortcut(page, 'Control+V')
+
+  expect(await waitForCircuitJson(page, '{"cols":[["H"],["X"],["X"]]}')).toBe(
+    '{"cols":[["H"],["X"],["X"]]}',
+  )
+})
+
 test('clicking an empty cell moves the paste anchor without replacing the clipboard', async ({ page }) => {
   await openCircuit(page, '{"cols":[["H"],["X"]]}')
   await clickGate(page, 0, 0)

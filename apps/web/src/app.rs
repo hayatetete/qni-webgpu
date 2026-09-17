@@ -130,7 +130,7 @@ pub(crate) struct QniApp {
     drag_repaint_pending: bool,
     startup_repaint_until: f64,
     pointer_was_down: bool,
-    gate_click_selection: Option<(GateId, f64, BTreeSet<GateId>)>,
+    gate_click_selection: Option<GateClickSelection>,
     /// Debug HUD: backtick (`) toggles a small bottom-right overlay showing
     /// smoothed FPS + frame ms. Off by default — when on, forces continuous
     /// repaint so the reading stays responsive (which itself costs perf,
@@ -146,6 +146,13 @@ pub(crate) struct QniApp {
     /// total CPU time — useful for "is the state panel scaling badly?"
     /// diagnostics.
     fps_hud_svp_history: VecDeque<f32>,
+}
+
+struct GateClickSelection {
+    gate_id: GateId,
+    pressed_at: f64,
+    selected_gate_ids: BTreeSet<GateId>,
+    repeated_same_gate: bool,
 }
 
 impl QniApp {
