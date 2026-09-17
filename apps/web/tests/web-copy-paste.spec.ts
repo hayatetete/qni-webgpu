@@ -46,6 +46,20 @@ const circuitCellPoint = async (page: Page, column: number, wire: number) => {
   }
 }
 
+const controlledFrameProbe = async (page: Page) => {
+  await openCircuit(page, '{"cols":[["•",1,"X"]]}')
+  const control = await circuitCellPoint(page, 0, 0)
+  const center = await circuitCellPoint(page, 0, 1)
+  return {
+    control,
+    probe: {
+      name: 'groupFrame',
+      x: center.x + UI_CONSTANTS.GATE_SIZE / 2 + 3,
+      y: center.y,
+    },
+  }
+}
+
 const clickUndo = async (page: Page): Promise<void> => {
   const box = await page.locator('#egui-canvas').boundingBox()
   if (!box) throw new Error('expected egui canvas to be measurable')
@@ -101,27 +115,26 @@ test('copying either side of a CNOT preserves the controlled structure', async (
   )
 })
 
-test('a controlled operation uses one selection frame', async ({ page }) => {
-  await openCircuit(page, '{"cols":[["•",1,"X"]]}')
-  const control = await circuitCellPoint(page, 0, 0)
-  const center = await circuitCellPoint(page, 0, 1)
-  const probe = {
-    name: 'groupFrame',
-    x: center.x + UI_CONSTANTS.GATE_SIZE / 2 + 3,
-    y: center.y,
-  }
-
+test('a controlled operation uses one hover frame', async ({ page }) => {
+  const { control, probe } = await controlledFrameProbe(page)
   await page.mouse.move(control.x, control.y)
   const hovered = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
-  expect(pixelRgbDistance(hovered.groupFrame, HOVER_BORDER)).toBeLessThan(48)
 
+  expect(pixelRgbDistance(hovered.groupFrame, HOVER_BORDER)).toBeLessThan(48)
+})
+
+test('a controlled operation uses one selection frame', async ({ page }) => {
+  const { control, probe } = await controlledFrameProbe(page)
   await page.mouse.click(control.x, control.y)
   const selected = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
 
   expect(pixelRgbDistance(selected.groupFrame, SELECTION_BORDER)).toBeLessThan(48)
+})
 
-  await page.waitForTimeout(600)
+test('double-clicking a controlled gate removes its group frame', async ({ page }) => {
+  const { control, probe } = await controlledFrameProbe(page)
   await page.mouse.dblclick(control.x, control.y)
+
   await expect.poll(async () => {
     const individual = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
     return Math.min(

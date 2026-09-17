@@ -25,7 +25,7 @@ use crate::shared::now_seconds;
 use crate::span_resize::{span_resize_body_rect, span_resize_ease_out_back, SpanResizeHandles};
 
 use super::amplitude_circle_popover as amplitude_popover;
-use super::hover_frame::hover_frame_corner_radius;
+use super::hover_frame::{connected_gate_frame_corner_radius, hover_frame_corner_radius};
 use super::popover::{self, PopoverPlacement, PopoverTail};
 use super::state_panel_popup::{draw_amplitude_icon, draw_phase_icon, draw_probability_icon};
 
@@ -60,6 +60,37 @@ fn bloch_hover_popup_title() -> &'static str {
 }
 
 impl QniApp {
+    fn gate_group_frame(
+        &self,
+        group: &std::collections::BTreeSet<GateId>,
+        circuit_origin: egui::Pos2,
+        now: f64,
+    ) -> Option<(egui::Rect, egui::CornerRadius)> {
+        let mut gates = self
+            .placed_gates
+            .iter()
+            .filter(|gate| group.contains(&gate.id));
+        let first = gates.next()?;
+        let first_kind = first.kind;
+        let frame_rect = std::iter::once(first).chain(gates).fold(
+            egui::Rect::NOTHING,
+            |rect, gate| {
+                let motion_x = self
+                    .circuit_motion_offset_x(gate.id, now)
+                    .unwrap_or_default();
+                let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
+                let gate_rect = gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
+                rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
+            },
+        );
+        let corner_radius = if group.len() == 1 {
+            hover_frame_corner_radius(first_kind)
+        } else {
+            connected_gate_frame_corner_radius()
+        };
+        Some((frame_rect, corner_radius))
+    }
+
     fn amplitude_display_slot(&self, gate_id: GateId) -> Option<u32> {
         let external_slot = self
             .external_gpu_amplitude_uploads
@@ -238,37 +269,26 @@ impl QniApp {
             }
         }
         if !fast_drag && editing_enabled {
+            let selection_groups =
+                selection_frame_groups(&self.placed_gates, &self.selected_gate_ids);
             if let Some(hovered_gate_id) = self.hovered_gate_id {
-                let group = selection_frame_groups(&self.placed_gates, &self.selected_gate_ids)
-                    .into_iter()
-                    .find(|group| group.contains(&hovered_gate_id))
-                    .unwrap_or_else(|| gate_frame_group(&self.placed_gates, hovered_gate_id));
-                let gates = self
-                    .placed_gates
+                let group = selection_groups
                     .iter()
-                    .filter(|gate| group.contains(&gate.id))
-                    .collect::<Vec<_>>();
-                if let Some(first) = gates.first() {
-                    let frame_rect = gates.iter().fold(egui::Rect::NOTHING, |rect, gate| {
-                        let motion_x = self
-                            .circuit_motion_offset_x(gate.id, now)
-                            .unwrap_or_default();
-                        let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
-                        let gate_rect =
-                            gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
-                        rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
-                    });
+                    .find(|group| group.contains(&hovered_gate_id))
+                    .cloned()
+                    .unwrap_or_else(|| gate_frame_group(&self.placed_gates, hovered_gate_id));
+                if let Some((frame_rect, corner_radius)) =
+                    self.gate_group_frame(&group, circuit_origin, now)
+                {
                     painter.rect_stroke(
                         frame_rect.expand(4.0),
-                        hover_frame_corner_radius(first.kind),
+                        corner_radius,
                         egui::Stroke::new(2.0_f32, colors.gate_hover_border),
                         egui::StrokeKind::Inside,
                     );
                 }
             }
-        }
-        if !fast_drag && editing_enabled {
-            for group in selection_frame_groups(&self.placed_gates, &self.selected_gate_ids) {
+            for group in selection_groups {
                 if dragging_gate_id.is_some_and(|gate_id| group.contains(&gate_id))
                     || group
                         .iter()
@@ -276,29 +296,17 @@ impl QniApp {
                 {
                     continue;
                 }
-                let gates = self
-                    .placed_gates
-                    .iter()
-                    .filter(|gate| group.contains(&gate.id))
-                    .collect::<Vec<_>>();
-                let Some(first) = gates.first() else {
+                let Some((frame_rect, corner_radius)) =
+                    self.gate_group_frame(&group, circuit_origin, now)
+                else {
                     continue;
                 };
-                let frame_rect = gates.iter().fold(egui::Rect::NOTHING, |rect, gate| {
-                    let motion_x = self
-                        .circuit_motion_offset_x(gate.id, now)
-                        .unwrap_or_default();
-                    let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
-                    let gate_rect =
-                        gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
-                    rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
-                });
-                let copy_strength = gates
+                let copy_strength = group
                     .iter()
-                    .filter_map(|gate| {
+                    .filter_map(|&gate_id| {
                         self.copy_flash
                             .as_ref()
-                            .and_then(|flash| flash.strength(gate.id, now))
+                            .and_then(|flash| flash.strength(gate_id, now))
                     })
                     .reduce(f32::max);
                 let selection_color = copy_strength
@@ -306,7 +314,7 @@ impl QniApp {
                     .unwrap_or(colors.semantic_on);
                 painter.rect_stroke(
                     frame_rect.expand(4.0),
-                    hover_frame_corner_radius(first.kind),
+                    corner_radius,
                     egui::Stroke::new(2.0_f32, selection_color),
                     egui::StrokeKind::Inside,
                 );

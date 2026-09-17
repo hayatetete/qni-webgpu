@@ -27,6 +27,10 @@ pub(crate) fn hover_frame_corner_radius(kind: GateKind) -> egui::CornerRadius {
     }
 }
 
+pub(crate) fn connected_gate_frame_corner_radius() -> egui::CornerRadius {
+    egui::CornerRadius::same(ROUNDED_GATE_HOVER_FRAME_RADIUS)
+}
+
 /// Palette-only inner cutout corner. It must stay square for square display
 /// blocks; otherwise the filled gap would reintroduce rounded corners.
 pub(crate) fn hover_frame_inner_corner_radius(kind: GateKind) -> egui::CornerRadius {
