@@ -14,7 +14,9 @@ use std::collections::BTreeSet;
 
 use eframe::egui;
 
-use super::{circuit_clipboard::CircuitCell, CircuitColumnIndex, GateId, QniApp, WireIndex};
+use super::{
+    circuit_clipboard::CircuitCell, gate_frame_group, CircuitColumnIndex, GateId, QniApp, WireIndex,
+};
 use crate::constants::{GATE_SIZE, LINE_GAP, PALETTE_ROW_Y, SLOT_SPACING};
 use crate::layout::{
     layout_metrics, nearest_line, nearest_slot_index, palette_layout, palette_start_x,
@@ -178,15 +180,14 @@ impl DragController {
 
 fn update_rect_selection(app: &mut QniApp, drag: &SelectionDrag) {
     let selection_rect = egui::Rect::from_two_pos(drag.start, drag.current);
+    let touched = app
+        .placed_gates
+        .iter()
+        .filter(|gate| crate::layout::gate_visible_rect(gate, gate.pos).intersects(selection_rect))
+        .flat_map(|gate| gate_frame_group(&app.placed_gates, gate.id))
+        .collect::<BTreeSet<_>>();
     app.selected_gate_ids = drag.initial_selection.clone();
-    app.selected_gate_ids.extend(
-        app.placed_gates
-            .iter()
-            .filter(|gate| {
-                crate::layout::gate_visible_rect(gate, gate.pos).intersects(selection_rect)
-            })
-            .map(|gate| gate.id),
-    );
+    app.selected_gate_ids.extend(touched);
 }
 
 impl QniApp {

@@ -543,6 +543,8 @@ impl super::QniApp {
             self.selected_gate_ids.clear();
             self.active_cell = None;
             self.copy_flash = None;
+            self.selection_drag = None;
+            self.gate_click_selection = None;
             ctx.request_repaint();
         }
     }

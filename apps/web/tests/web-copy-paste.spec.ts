@@ -271,6 +271,38 @@ test('dragging from an empty cell selects every touched gate before release', as
   )
 })
 
+test('rectangle selection expands a touched CNOT part to its operation', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["•",1,"X"]]}')
+  const start = await circuitCellPoint(page, 0, 3)
+  const target = await circuitCellPoint(page, 0, 2)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(target.x, target.y, { steps: 4 })
+  await pressShortcut(page, 'Control+C')
+  await page.mouse.up()
+  await pressShortcut(page, 'Control+V')
+
+  expect(await waitForCircuitJson(page, '{"cols":[["•",1,"X"],["•",1,"X"]]}')).toBe(
+    '{"cols":[["•",1,"X"],["•",1,"X"]]}',
+  )
+})
+
+test('Escape cancels an active rectangle selection', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["X"]]}')
+  const start = await circuitCellPoint(page, 0, 1)
+  const gate = await circuitCellPoint(page, 1, 0)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(gate.x, gate.y, { steps: 4 })
+  await pressShortcut(page, 'Escape')
+  await page.mouse.up()
+  await pressShortcut(page, 'Delete')
+
+  expect(await waitForCircuitJson(page, '{"cols":[["H"],["X"]]}')).toBe(
+    '{"cols":[["H"],["X"]]}',
+  )
+})
+
 test('Ctrl+A selects every gate for copying', async ({ page }) => {
   await openCircuit(page, '{"cols":[["H"],["X"]]}')
   await pressShortcut(page, 'Control+A')
