@@ -31,6 +31,7 @@ const X_JSON = '{"cols":[["X"]]}'
 const EGUI_PANEL_MARGIN = 8
 const CANVAS_BACKGROUND: CanvasPixel = [242, 240, 229, 255] // Flexoki bg-2 #F2F0E5.
 const GATE_HOVER_BORDER: CanvasPixel = [139, 126, 200, 255] // Flexoki purple-400 #8B7EC8.
+const GATE_SELECTION_BORDER: CanvasPixel = [32, 94, 166, 255] // Flexoki blue-600 #205EA6.
 
 const snapshot = async (page: Page): Promise<CircuitLibrarySnapshot> => {
   const raw = await page.evaluate(() => {
@@ -211,6 +212,32 @@ test('locked active circuit does not paint placed gate hover frame', async ({ pa
   ])
 
   expect(pixelRgbDistance(pixels.hoverFrame, GATE_HOVER_BORDER) < 48).toBe(false)
+})
+
+test('locked active circuit does not paint a copy selection frame', async ({ page }) => {
+  await seedLibrary(page, {
+    entries: [{ id: 'bell', name: 'Bell state', circuit_json: BELL_JSON, updated_at: 1, origin: { kind: 'sample', origin_id: 'bell' } }],
+    active_id: 'bell',
+  })
+  await waitForSnapshot(page, (state) => state.active_locked === true, 'locked sample active')
+
+  const box = await canvasBox(page)
+  const gateCenter = {
+    x: EGUI_PANEL_MARGIN + UI_CONSTANTS.LINE_LEFT_OFFSET + UI_CONSTANTS.GATE_SIZE,
+    y: EGUI_PANEL_MARGIN + UI_CONSTANTS.LINE_Y,
+  }
+  await page.mouse.click(box.x + gateCenter.x, box.y + gateCenter.y)
+  await page.keyboard.press('Control+C')
+  await page.waitForTimeout(50)
+  const pixels = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [
+    {
+      name: 'selectionFrame',
+      x: gateCenter.x,
+      y: gateCenter.y - UI_CONSTANTS.GATE_SIZE / 2 - 3,
+    },
+  ])
+
+  expect(pixelRgbDistance(pixels.selectionFrame, GATE_SELECTION_BORDER) < 48).toBe(false)
 })
 
 test('locking a My circuit guards runtime URL apply', async ({ page }) => {

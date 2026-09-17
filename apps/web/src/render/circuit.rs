@@ -65,7 +65,8 @@ impl QniApp {
         // preview), breakpoint = full opacity (locked-in step). Mirrors
         // qni's `circuit-step::after` data-active / data-breakpoint
         // styling.
-        let paste_preview = self.paste_preview();
+        let edit_feedback_visible = !self.library.active_locked();
+        let paste_preview = self.paste_preview().filter(|_| edit_feedback_visible);
         if !metrics.line_ys.is_empty() && !metrics.slot_centers.is_empty() {
             let top = metrics.line_ys[0] - crate::constants::LINE_GAP * 0.5;
             let bot = metrics.line_ys[metrics.line_ys.len() - 1] + crate::constants::LINE_GAP * 0.5;
@@ -136,7 +137,10 @@ impl QniApp {
 
         // Selection rubber-band is interaction chrome, so it must stay above
         // opaque and GPU-backed gate bodies alike.
-        if let Some(selection_rect) = self.selection_drag_rect() {
+        if let Some(selection_rect) = self
+            .selection_drag_rect()
+            .filter(|_| edit_feedback_visible)
+        {
             let selection_rect = selection_rect.translate(circuit_origin.to_vec2());
             painter.rect_filled(
                 selection_rect,

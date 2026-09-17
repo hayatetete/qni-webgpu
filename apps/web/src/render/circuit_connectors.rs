@@ -48,6 +48,9 @@ impl QniApp {
         gate_ids: impl IntoIterator<Item = GateId>,
         colors: &Colors,
     ) -> egui::Color32 {
+        if self.library.active_locked() {
+            return colors.box_fill;
+        }
         let gate_ids = gate_ids.into_iter().collect::<Vec<_>>();
         let now = now_seconds();
         let Some(strength) = self

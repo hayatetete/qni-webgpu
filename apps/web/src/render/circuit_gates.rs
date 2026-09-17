@@ -124,8 +124,9 @@ impl QniApp {
         dragging_gate_id: Option<GateId>,
     ) {
         let now = now_seconds();
+        let editing_enabled = !self.library.active_locked();
         for gate in &self.placed_gates {
-            if self.paste_gate_hidden(gate.id, now) {
+            if editing_enabled && self.paste_gate_hidden(gate.id, now) {
                 painter
                     .ctx()
                     .request_repaint_after(Duration::from_secs_f64(DRAG_REPAINT_MIN_SECS));
@@ -140,7 +141,9 @@ impl QniApp {
             if dragging_gate_id == Some(gate.id) && !live_dragging_gate {
                 continue;
             }
-            let motion_x = self.circuit_motion_offset_x(gate.id, now);
+            let motion_x = editing_enabled
+                .then(|| self.circuit_motion_offset_x(gate.id, now))
+                .flatten();
             if motion_x.is_some() {
                 painter
                     .ctx()
@@ -154,16 +157,19 @@ impl QniApp {
             let body_rect = span_resize_body_rect(gate.kind, gate.span.get(), gate_rect);
             let measurement_has_slot =
                 gate.kind == GateKind::Measurement && self.gpu_plan.has_measurement_slot(gate.id);
-            let edit_hover_visible = !self.library.active_locked();
             let copy_strength = self
                 .copy_flash
                 .as_ref()
+                .filter(|_| editing_enabled)
                 .and_then(|flash| flash.strength(gate.id, now));
-            let paste_strength = self
-                .paste_flashes
-                .iter()
-                .filter_map(|flash| flash.strength(gate.id, now))
-                .reduce(f32::max);
+            let paste_strength = editing_enabled
+                .then(|| {
+                    self.paste_flashes
+                        .iter()
+                        .filter_map(|flash| flash.strength(gate.id, now))
+                        .reduce(f32::max)
+                })
+                .flatten();
             let highlight_strength = paste_strength;
             if highlight_strength.is_some() {
                 painter
@@ -182,7 +188,7 @@ impl QniApp {
                 let mask_rect = gate_rect.expand2(egui::vec2(MEASUREMENT_WIRE_CLEARANCE, 0.0));
                 painter.rect_filled(mask_rect, egui::CornerRadius::ZERO, circuit_fill);
             }
-            if !fast_drag && edit_hover_visible && self.hovered_gate_id == Some(gate.id) {
+            if !fast_drag && editing_enabled && self.hovered_gate_id == Some(gate.id) {
                 let hover_outer = body_rect.expand(4.0);
                 // 接続線はゲート本体の下に描く。ホバー枠の内側を背景色で
                 // 塗りつぶすと、Control / AntiControl / Swap / Phase などの
@@ -195,7 +201,10 @@ impl QniApp {
                     egui::StrokeKind::Inside,
                 );
             }
-            if !fast_drag && self.selected_gate_ids.contains(&gate.id) {
+            if !fast_drag
+                && editing_enabled
+                && self.selected_gate_ids.contains(&gate.id)
+            {
                 // Flexoki blue-600 via the semantic-on theme role. This
                 // persistent selection ring is distinct from purple hover.
                 let selection_color = copy_strength
@@ -237,7 +246,7 @@ impl QniApp {
                 &self.placed_gates,
                 self.exec_mode.qubit_capacity().get(),
             ) {
-                let visible = (edit_hover_visible && self.hovered_gate_id == Some(gate.id))
+                let visible = (editing_enabled && self.hovered_gate_id == Some(gate.id))
                     || self.span_resize_drag.map(|d| d.gate_id) == Some(gate.id);
                 let visible_t = painter.ctx().animate_bool_with_time_and_easing(
                     egui::Id::new(("span_resize_handles", gate.id)),

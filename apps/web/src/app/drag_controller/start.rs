@@ -54,6 +54,9 @@ impl DragController {
                 drag,
                 starts_live_display_snap,
             } => {
+                if app.library.active_locked() {
+                    return false;
+                }
                 let shift = ctx.input(|input| input.modifiers.shift);
                 if shift {
                     app.add_gate_to_copy_selection(drag.id);
@@ -61,9 +64,6 @@ impl DragController {
                     return true;
                 }
                 app.select_gate_for_copy(drag.id);
-                if app.library.active_locked() {
-                    return false;
-                }
                 app.begin_circuit_commit();
                 app.dragging_live_snap = app.placed_gates.iter().find_map(|gate| {
                     (gate.id == drag.id).then_some(LiveDragSnap::Slot {
@@ -132,6 +132,9 @@ impl DragController {
                 true
             }
             DragStartIntent::EmptyCell(cell) => {
+                if app.library.active_locked() {
+                    return false;
+                }
                 let Some(start) = pointer.local_pos else {
                     return false;
                 };
@@ -141,6 +144,9 @@ impl DragController {
                 true
             }
             DragStartIntent::Background => {
+                if app.library.active_locked() {
+                    return false;
+                }
                 let Some(start) = pointer.local_pos else {
                     return false;
                 };
