@@ -130,6 +130,7 @@ pub(crate) struct QniApp {
     drag_repaint_pending: bool,
     startup_repaint_until: f64,
     pointer_was_down: bool,
+    gate_click_selection: Option<(GateId, f64, BTreeSet<GateId>)>,
     /// Debug HUD: backtick (`) toggles a small bottom-right overlay showing
     /// smoothed FPS + frame ms. Off by default — when on, forces continuous
     /// repaint so the reading stays responsive (which itself costs perf,
@@ -322,6 +323,7 @@ impl QniApp {
             drag_repaint_pending: false,
             startup_repaint_until: now_seconds() + 0.5,
             pointer_was_down: false,
+            gate_click_selection: None,
             fps_hud_visible: false,
             fps_hud_history: VecDeque::with_capacity(120),
             fps_hud_cpu_history: VecDeque::with_capacity(120),

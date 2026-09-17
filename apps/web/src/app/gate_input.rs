@@ -12,6 +12,8 @@ use crate::constants::{
 use crate::layout::gate_visible_rect;
 use crate::shared::now_seconds;
 
+const DOUBLE_CLICK_SELECTION_WINDOW_SECS: f64 = 0.5;
+
 impl QniApp {
     pub(crate) fn handle_input(
         &mut self,
@@ -48,15 +50,28 @@ impl QniApp {
             self.layout_qubits(),
             self.min_circuit_slots(),
         );
-        let double_clicked_gate_id = double_clicked.then(|| {
-            local_pos.and_then(|cursor| {
-                self.placed_gates
-                    .iter()
-                    .rev()
-                    .find(|gate| gate_visible_rect(gate, gate.pos).contains(cursor))
-                    .map(|gate| gate.id)
-            })
+        let pointer_gate_id = local_pos.and_then(|cursor| {
+            self.placed_gates
+                .iter()
+                .rev()
+                .find(|gate| gate_visible_rect(gate, gate.pos).contains(cursor))
+                .map(|gate| gate.id)
         });
+        if pointer_start {
+            if let Some(gate_id) = pointer_gate_id {
+                let now = now_seconds();
+                let continues_click = self.gate_click_selection.as_ref().is_some_and(
+                    |(previous_gate_id, pressed_at, _)| {
+                        *previous_gate_id == gate_id
+                            && now - pressed_at <= DOUBLE_CLICK_SELECTION_WINDOW_SECS
+                    },
+                );
+                if !continues_click {
+                    self.gate_click_selection =
+                        Some((gate_id, now, self.selected_gate_ids.clone()));
+                }
+            }
+        }
         let drag_pointer = DragPointer {
             screen_pos: pos,
             local_pos,
@@ -158,8 +173,14 @@ impl QniApp {
         }
 
         DragController::commit_gate_drop(self, drag_pointer, &geometry.metrics, ctx);
-        if let Some(Some(gate_id)) = double_clicked_gate_id {
-            self.select_gate_alone(gate_id);
+        if let Some(gate_id) = double_clicked.then_some(pointer_gate_id).flatten() {
+            let selection = self
+                .gate_click_selection
+                .take()
+                .filter(|(clicked_gate_id, _, _)| *clicked_gate_id == gate_id)
+                .map(|(_, _, selection)| selection)
+                .unwrap_or_default();
+            self.select_gate_individually(gate_id, selection);
             ctx.request_repaint();
         }
         DragController::set_cursor_icon(self, drag_pointer, ctx);

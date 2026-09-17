@@ -120,7 +120,7 @@ test('a controlled operation uses one selection frame', async ({ page }) => {
 
   expect(pixelRgbDistance(selected.groupFrame, SELECTION_BORDER)).toBeLessThan(48)
 
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(600)
   await page.mouse.dblclick(control.x, control.y)
   await expect.poll(async () => {
     const individual = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [probe])
@@ -304,4 +304,24 @@ test('double-clicking a CNOT part copies only that part', async ({ page }) => {
   expect(await waitForCircuitJson(page, '{"cols":[["•",1,"X"],[1,1,"X"]]}')).toBe(
     '{"cols":[["•",1,"X"],[1,1,"X"]]}',
   )
+})
+
+test('double-clicking a CNOT part preserves unrelated selected gates', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["•",1,"X"]]}')
+  await clickGate(page, 0, 0)
+  const target = await circuitCellPoint(page, 1, 2)
+  await page.keyboard.down('Shift')
+  await page.mouse.click(target.x, target.y)
+  await page.keyboard.up('Shift')
+  await page.waitForTimeout(600)
+  await page.mouse.dblclick(target.x, target.y)
+  await pressShortcut(page, 'Control+C')
+  await pressShortcut(page, 'Control+V')
+
+  expect(
+    await waitForCircuitJson(
+      page,
+      '{"cols":[["H"],["•",1,"X"],["H"],[1,1,"X"]]}',
+    ),
+  ).toBe('{"cols":[["H"],["•",1,"X"],["H"],[1,1,"X"]]}')
 })

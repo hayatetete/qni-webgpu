@@ -289,6 +289,21 @@ pub(crate) fn selection_frame_groups(
     groups
 }
 
+fn individually_selected(
+    placed_gates: &[PlacedGate],
+    gate_id: GateId,
+    mut selection: BTreeSet<GateId>,
+) -> BTreeSet<GateId> {
+    let Some(gate) = placed_gates.iter().find(|gate| gate.id == gate_id) else {
+        return selection;
+    };
+    for connected_id in connected_selection(placed_gates, gate) {
+        selection.remove(&connected_id);
+    }
+    selection.insert(gate_id);
+    selection
+}
+
 fn is_control_target(kind: GateKind) -> bool {
     !matches!(
         kind,
@@ -461,11 +476,15 @@ impl super::QniApp {
         });
     }
 
-    pub(crate) fn select_gate_alone(&mut self, gate_id: GateId) {
+    pub(crate) fn select_gate_individually(
+        &mut self,
+        gate_id: GateId,
+        selection: BTreeSet<GateId>,
+    ) {
         let Some(gate) = self.placed_gates.iter().find(|gate| gate.id == gate_id) else {
             return;
         };
-        self.selected_gate_ids = BTreeSet::from([gate_id]);
+        self.selected_gate_ids = individually_selected(&self.placed_gates, gate_id, selection);
         self.active_cell = Some(CircuitCell {
             column: gate.column,
             wire: gate.wire,
@@ -850,6 +869,25 @@ mod tests {
         let selected = BTreeSet::from([GateId::from_u32(1)]);
 
         assert_eq!(selection_frame_groups(&gates, &selected), vec![selected]);
+    }
+
+    #[test]
+    fn individual_control_selection_preserves_unrelated_selection() {
+        let gates = vec![
+            gate(1, GateKind::H, 0, 3),
+            gate(2, GateKind::Control, 1, 0),
+            gate(3, GateKind::X, 1, 1),
+        ];
+        let selected = BTreeSet::from([
+            GateId::from_u32(1),
+            GateId::from_u32(2),
+            GateId::from_u32(3),
+        ]);
+
+        assert_eq!(
+            individually_selected(&gates, GateId::from_u32(2), selected),
+            BTreeSet::from([GateId::from_u32(1), GateId::from_u32(2)])
+        );
     }
 
     #[test]
