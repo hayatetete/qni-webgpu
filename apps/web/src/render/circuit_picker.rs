@@ -13,11 +13,11 @@ mod rename;
 
 use action::PickerAction;
 use chrome::{
-    apply_items_scrollbar_style, footer, paint_chevron, paint_divider, paint_kebab,
-    paint_picker_item_text, paint_resize_separator, paint_section_header, popover_frame,
-    publish_picker_dropdown_geometry_json, publish_picker_resize_geometry_json,
-    publish_picker_submenu_geometry_json, submenu_item,
+    apply_items_scrollbar_style, footer, paint_divider, paint_kebab, paint_picker_item_text,
+    paint_resize_separator, paint_section_header, publish_picker_dropdown_geometry_json,
+    publish_picker_resize_geometry_json, publish_picker_submenu_geometry_json, submenu_item,
 };
+pub(crate) use chrome::{paint_chevron, popover_frame};
 use constants::*;
 
 const EXAMPLE_CIRCUITS_LABEL: &str = "EXAMPLE CIRCUITS";
@@ -34,6 +34,7 @@ impl QniApp {
         self.handle_picker_keyboard(ctx);
         let trigger = self.show_picker_trigger(ui, colors);
         if trigger.clicked() {
+            self.shortcut_help_open = false;
             if self.picker.is_open() {
                 self.picker.close();
             } else {

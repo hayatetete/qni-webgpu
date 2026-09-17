@@ -105,6 +105,7 @@ pub(crate) struct QniApp {
     qubit_count: usize,
     pub(crate) exec_mode: ExecMode,
     pub(crate) exec_mode_keyboard_focus: bool,
+    pub(crate) shortcut_help_open: bool,
     pub(crate) external_gpu_status: ExternalGpuStatus,
     pub(crate) external_gpu_started_at: Option<f64>,
     /// One-shot local WebGPU refresh for the state-vector panel after an
@@ -299,6 +300,7 @@ impl QniApp {
             qubit_count: initial_qubit_count,
             exec_mode,
             exec_mode_keyboard_focus: false,
+            shortcut_help_open: false,
             external_gpu_status: ExternalGpuStatus::default(),
             external_gpu_started_at: None,
             external_gpu_state_refresh_pending: false,

@@ -441,7 +441,7 @@ impl super::QniApp {
     }
 
     pub(crate) fn handle_circuit_edit_shortcuts(&mut self, ctx: &eframe::egui::Context) {
-        if ctx.wants_keyboard_input() || self.library.active_locked() {
+        if ctx.wants_keyboard_input() || self.library.active_locked() || self.shortcut_help_open {
             return;
         }
         let (select_all, copy, cut, paste, undo, redo, delete, escape) = ctx.input_mut(|input| {

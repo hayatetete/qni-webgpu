@@ -28,6 +28,7 @@ pub(crate) const QNI_SEED_CIRCUITS: &str = "__seedCircuits";
 pub(crate) const QNI_SET_EXTERNAL_GPU_STATUS: &str = "__setExternalGpuStatus";
 pub(crate) const QNI_TOOLBAR_DUPLICATE_GEOMETRY_JSON: &str = "__qniToolbarDuplicateGeometryJson";
 pub(crate) const QNI_TOOLBAR_LOCK_GEOMETRY_JSON: &str = "__qniToolbarLockGeometryJson";
+pub(crate) const QNI_TOOLBAR_SHORTCUT_GEOMETRY_JSON: &str = "__qniToolbarShortcutGeometryJson";
 pub(crate) const QNI_TOOLBAR_TOOLTIP_TEXT: &str = "__qniToolbarTooltipText";
 
 #[cfg(target_arch = "wasm32")]

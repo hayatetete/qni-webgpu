@@ -10,7 +10,7 @@ use super::constants::{
     ROW_ICON_SIZE, ROW_TEXT_OFFSET, SECTION_HEADER_HEIGHT, SECTION_HEADER_TOP_MARGIN,
 };
 
-pub(super) fn popover_frame(colors: &Colors) -> egui::Frame {
+pub(crate) fn popover_frame(colors: &Colors) -> egui::Frame {
     egui::Frame {
         inner_margin: egui::Margin::same(6),         // p-1.5 = 6px.
         fill: colors.surface,                        // Flexoki bg / paper.
@@ -395,7 +395,7 @@ pub(super) fn paint_divider(ui: &mut egui::Ui, colors: &Colors) {
     );
 }
 
-pub(super) fn paint_chevron(
+pub(crate) fn paint_chevron(
     painter: &egui::Painter,
     center: egui::Pos2,
     open_t: f32,
