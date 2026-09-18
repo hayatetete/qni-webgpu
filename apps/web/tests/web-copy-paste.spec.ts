@@ -168,6 +168,22 @@ test('one paste creates one undoable history entry', async ({ page }) => {
   )
 })
 
+test('undo after deletion restores only the deletion and keeps the paste', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["X"]]}')
+  await clickGate(page, 0, 0)
+  await pressShortcut(page, 'Control+C')
+  await pressShortcut(page, 'Control+V')
+  await waitForCircuitJson(page, '{"cols":[["H"],["H"],["X"]]}')
+  await clickGate(page, 2, 0)
+  await pressShortcut(page, 'Delete')
+  await waitForCircuitJson(page, '{"cols":[["H"],["H"]]}')
+  await pressShortcut(page, 'Control+Z')
+
+  expect(await waitForCircuitJson(page, '{"cols":[["H"],["H"],["X"]]}')).toBe(
+    '{"cols":[["H"],["H"],["X"]]}',
+  )
+})
+
 test('clicking another gate moves the paste anchor without replacing the clipboard', async ({ page }) => {
   await openCircuit(page, '{"cols":[["H"],["X"]]}')
   await clickGate(page, 0, 0)
@@ -281,6 +297,23 @@ test('dragging from an empty cell selects every touched gate before release', as
 
   expect(await waitForCircuitJson(page, '{"cols":[["H"],["X"],["Z"],["H"],["X"],["Z"]]}')).toBe(
     '{"cols":[["H"],["X"],["Z"],["H"],["X"],["Z"]]}',
+  )
+})
+
+test('rectangle selection without Shift replaces the previous selection', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["X"],["Z"]]}')
+  await clickGate(page, 0, 0)
+  const start = await circuitCellPoint(page, 1, 1)
+  const target = await circuitCellPoint(page, 2, 0)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(target.x, target.y, { steps: 4 })
+  await page.mouse.up()
+  await pressShortcut(page, 'Control+C')
+  await pressShortcut(page, 'Control+V')
+
+  expect(await waitForCircuitJson(page, '{"cols":[["H"],["X"],["Z"],["X"],["Z"]]}')).toBe(
+    '{"cols":[["H"],["X"],["Z"],["X"],["Z"]]}',
   )
 })
 
