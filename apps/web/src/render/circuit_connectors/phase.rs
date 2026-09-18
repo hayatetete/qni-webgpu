@@ -79,7 +79,7 @@ pub(super) fn draw_phase_connectors_and_labels(
     let render_columns = ColumnAnalysis::from_gates(&app.placed_gates, |gate| {
         gate_slot_index_for_render(gate, metrics, dragging_gate_id)
     });
-    draw_phase_phase_connectors(&render_columns, painter, metrics, colors, circuit_origin);
+    draw_phase_phase_connectors(app, &render_columns, painter, colors, circuit_origin);
     draw_parametric_angle_labels(
         app,
         &render_columns,
@@ -92,12 +92,13 @@ pub(super) fn draw_phase_connectors_and_labels(
 }
 
 fn draw_phase_phase_connectors(
+    app: &QniApp,
     render_columns: &ColumnAnalysis<'_>,
     painter: &egui::Painter,
-    metrics: &LayoutMetrics,
     colors: &Colors,
     circuit_origin: egui::Pos2,
 ) {
+    let now = now_seconds();
     // Phase-Phase connector. qni's
     // `circuit-step-element.ts::updatePhasePhaseConnections` (:566-602)
     // draws a connector between same-angle Phase gates in the same column.
@@ -106,17 +107,24 @@ fn draw_phase_phase_connectors(
     // targets and applies the same 2x2 to each in turn), so we mirror just the
     // line rendering. Bare legacy `P` uses the parametric default π/2.
     for column in render_columns.columns() {
-        let mut angle_buckets: HashMap<ParametricAngle, Vec<egui::Pos2>> = HashMap::new();
+        let mut angle_buckets: HashMap<ParametricAngle, Vec<(GateId, egui::Pos2)>> = HashMap::new();
         for gate in column.gates() {
-            if gate.kind != GateKind::Phase {
+            if gate.kind != GateKind::Phase || app.paste_gate_hidden(gate.id, now) {
                 continue;
             }
             let Some(angle) = phase_angle(gate) else {
                 continue;
             };
-            let center =
-                circuit_origin + gate.pos.to_vec2() + egui::vec2(GATE_SIZE / 2.0, GATE_SIZE / 2.0);
-            angle_buckets.entry(angle).or_default().push(center);
+            let motion_x = app
+                .circuit_motion_offset_x(gate.id, now)
+                .unwrap_or_default();
+            let center = circuit_origin
+                + gate.pos.to_vec2()
+                + egui::vec2(motion_x + GATE_SIZE / 2.0, GATE_SIZE / 2.0);
+            angle_buckets
+                .entry(angle)
+                .or_default()
+                .push((gate.id, center));
         }
         for points in angle_buckets.values() {
             if points.len() < 2 {
@@ -124,13 +132,15 @@ fn draw_phase_phase_connectors(
             }
             let mut min_y = f32::INFINITY;
             let mut max_y = f32::NEG_INFINITY;
-            for point in points {
+            for (_, point) in points {
                 min_y = min_y.min(point.y);
                 max_y = max_y.max(point.y);
             }
-            // Slot-center anchored — same rationale as the control connectors.
-            let x = circuit_origin.x + metrics.slot_centers[column.slot];
-            draw_vertical_connector(painter, x, min_y, max_y, colors.box_fill);
+            // Follow the rendered gate centers while an insertion pushes the
+            // column horizontally, matching the control and swap connectors.
+            let x = points.iter().map(|(_, point)| point.x).sum::<f32>() / points.len() as f32;
+            let color = app.connector_color(points.iter().map(|(gate_id, _)| *gate_id), colors);
+            draw_vertical_connector(painter, x, min_y, max_y, color);
         }
     }
 }
@@ -162,18 +172,17 @@ fn draw_parametric_angle_labels(
         {
             continue;
         }
-        let Some(mut label) = parametric_angle_label_info(
+        let Some(label) = parametric_angle_label_info(
             gate,
             render_columns,
             metrics,
             circuit_origin,
             dragging_gate_id,
+            app.circuit_motion_offset_x(gate.id, now)
+                .unwrap_or_default(),
         ) else {
             continue;
         };
-        label.pos.x += app
-            .circuit_motion_offset_x(gate.id, now)
-            .unwrap_or_default();
         draw_angle_label(
             painter,
             label.pos,
@@ -191,10 +200,13 @@ pub(in crate::render) fn parametric_angle_label_info(
     metrics: &LayoutMetrics,
     circuit_origin: egui::Pos2,
     dragging_gate_id: Option<GateId>,
+    motion_x: f32,
 ) -> Option<AngleLabelInfo> {
     let angle = parametric_angle(gate)?;
     let text = angle.label();
-    let center = circuit_origin + gate.pos.to_vec2() + egui::vec2(GATE_SIZE / 2.0, GATE_SIZE / 2.0);
+    let center = circuit_origin
+        + gate.pos.to_vec2()
+        + egui::vec2(motion_x + GATE_SIZE / 2.0, GATE_SIZE / 2.0);
     let connection_sides = phase_render_column(render_columns, gate, metrics, dragging_gate_id)
         .map(|column| angle_label_connection_sides(column, gate, angle))
         .unwrap_or_default();

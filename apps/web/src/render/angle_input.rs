@@ -139,8 +139,10 @@ impl QniApp {
         let render_columns = ColumnAnalysis::from_gates(&self.placed_gates, |gate| {
             gate_slot_index_for_render(gate, metrics, dragging_gate_id)
         });
+        let now = crate::shared::now_seconds();
         self.placed_gates
             .iter()
+            .filter(|gate| !self.paste_gate_hidden(gate.id, now))
             .filter_map(|gate| {
                 parametric_angle_label_info(
                     gate,
@@ -148,6 +150,8 @@ impl QniApp {
                     metrics,
                     circuit_origin,
                     dragging_gate_id,
+                    self.circuit_motion_offset_x(gate.id, now)
+                        .unwrap_or_default(),
                 )
             })
             .map(|label| OwnedAngleLabel {
