@@ -6,6 +6,7 @@ use crate::colors::Colors;
 use crate::constants::GATE_SIZE;
 use crate::gates::{GateKind, ParametricAngle};
 use crate::layout::LayoutMetrics;
+use crate::shared::now_seconds;
 use crate::simulation_plan::{AnalyzedColumn, ColumnAnalysis};
 
 use super::super::circuit::gate_slot_index_for_render;
@@ -149,7 +150,11 @@ fn draw_parametric_angle_labels(
     // (`packages/elements/css/qni.css`, `.operation-angleable`). We mirror that
     // with the circuit background (Flexoki bg-2 via `colors.background`) so
     // labels stay legible over vertical connectors.
+    let now = now_seconds();
     for gate in &app.placed_gates {
+        if app.paste_gate_hidden(gate.id, now) {
+            continue;
+        }
         if app
             .angle_editor
             .as_ref()
@@ -157,7 +162,7 @@ fn draw_parametric_angle_labels(
         {
             continue;
         }
-        let Some(label) = parametric_angle_label_info(
+        let Some(mut label) = parametric_angle_label_info(
             gate,
             render_columns,
             metrics,
@@ -166,6 +171,9 @@ fn draw_parametric_angle_labels(
         ) else {
             continue;
         };
+        label.pos.x += app
+            .circuit_motion_offset_x(gate.id, now)
+            .unwrap_or_default();
         draw_angle_label(
             painter,
             label.pos,
