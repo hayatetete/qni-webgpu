@@ -189,18 +189,22 @@ fn start_intent(
         return DragStartIntent::SpanResize(resize);
     }
 
+    let now = crate::shared::now_seconds();
     if let Some(drag) = app
         .placed_gates
         .iter()
         .rev()
-        .find(|gate| {
-            let gate_rect = gate_visible_rect(gate, gate.pos);
-            gate_rect.contains(cursor)
+        .find_map(|gate| {
+            let motion_x = app
+                .circuit_motion_offset_x(gate.id, now)
+                .unwrap_or_default();
+            let gate_rect = gate_visible_rect(gate, gate.pos + egui::vec2(motion_x, 0.0));
+            gate_rect.contains(cursor).then_some((gate, motion_x))
         })
-        .map(|gate| DragStartIntent::ExistingGate {
+        .map(|(gate, motion_x)| DragStartIntent::ExistingGate {
             drag: DragState {
                 id: gate.id,
-                offset: cursor - gate.pos,
+                offset: cursor - gate.pos - egui::vec2(motion_x, 0.0),
                 original_column: Some(gate.column),
             },
             starts_live_display_snap: matches!(

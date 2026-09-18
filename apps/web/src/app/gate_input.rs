@@ -50,16 +50,21 @@ impl QniApp {
             self.layout_qubits(),
             self.min_circuit_slots(),
         );
+        let now = now_seconds();
         let pointer_gate_id = local_pos.and_then(|cursor| {
             self.placed_gates
                 .iter()
                 .rev()
-                .find(|gate| gate_visible_rect(gate, gate.pos).contains(cursor))
+                .find(|gate| {
+                    let motion_x = self
+                        .circuit_motion_offset_x(gate.id, now)
+                        .unwrap_or_default();
+                    gate_visible_rect(gate, gate.pos + egui::vec2(motion_x, 0.0)).contains(cursor)
+                })
                 .map(|gate| gate.id)
         });
         if pointer_start {
             if let Some(gate_id) = pointer_gate_id {
-                let now = now_seconds();
                 if let Some(click) = self.gate_click_selection.as_mut().filter(|click| {
                     click.gate_id == gate_id
                         && now - click.pressed_at <= DOUBLE_CLICK_SELECTION_WINDOW_SECS
