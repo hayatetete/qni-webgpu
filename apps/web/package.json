@@ -10,7 +10,8 @@
     "generate:ui-constants": "node -r ts-node/register/transpile-only scripts/generate-ui-constants.ts",
     "check:ui-constants": "node -r ts-node/register/transpile-only scripts/generate-ui-constants.ts --check",
     "typecheck": "tsc --noEmit",
-    "test:preflight": "pnpm run check:ui-constants && pnpm run typecheck && node -r ts-node/register/transpile-only --test test-node/*.test.ts"
+    "test:preflight": "pnpm run check:ui-constants && pnpm run typecheck && node -r ts-node/register/transpile-only --test test-node/*.test.ts",
+    "test:gpu": "node -r ts-node/register/transpile-only --test --test-concurrency=1 test-gpu/*.test.ts"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.8.1",
@@ -18,6 +19,7 @@
     "@types/node": "^25.6.0",
     "playwright": "^1.57.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "webgpu": "0.6.1"
   }
 }
