@@ -13,7 +13,7 @@
     "test:preflight": "pnpm run check:ui-constants && pnpm run typecheck && node -r ts-node/register/transpile-only --test test-node/*.test.ts"
   },
   "devDependencies": {
-    "@cucumber/cucumber": "^12.8.1",
+    "@cucumber/cucumber": "^13.2.1",
     "@playwright/test": "^1.57.0",
     "@types/node": "^26.6.2",
     "playwright": "^1.57.0",
