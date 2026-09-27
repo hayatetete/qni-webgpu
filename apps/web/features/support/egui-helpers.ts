@@ -98,10 +98,18 @@ const includesAny = (value: unknown, substrings: readonly string[]): boolean =>
   substrings.some((substring) => String(value).includes(substring))
 
 export const waitForAppReady = async (page: Page, timeout = DEFAULT_READY_TIMEOUT_MS): Promise<void> => {
+  let onPageError: ((error: Error) => void) | undefined
+  const pageError = new Promise<never>((_, reject) => {
+    onPageError = (error) => reject(error)
+    page.on('pageerror', onPageError)
+  })
   try {
-    await page.waitForFunction(() => window.__eguiReady === true || Boolean(window.__eguiError), null, { timeout })
+    await Promise.race([
+      page.waitForFunction(() => window.__eguiReady === true || Boolean(window.__eguiError), null, { timeout }),
+      pageError,
+    ])
   } catch (error) {
-    // 起動待ちのタイムアウトは「どの段階で止まったか」が分からないと切り分けできない。
+    // 起動待ちの失敗は「どの段階で止まったか」が分からないと切り分けできない。
     // 起動段階フラグとキャンバスの実サイズを添えて投げ直す。
     const state = await page.evaluate(() => {
       const canvas = document.getElementById('egui-canvas')
@@ -113,6 +121,8 @@ export const waitForAppReady = async (page: Page, timeout = DEFAULT_READY_TIMEOU
       }
     })
     throw new Error(`egui app did not become ready: ${JSON.stringify(state)} :: ${String(error).split('\n')[0]}`)
+  } finally {
+    if (onPageError) page.off('pageerror', onPageError)
   }
 }
 
