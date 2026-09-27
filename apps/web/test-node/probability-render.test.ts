@@ -9,10 +9,7 @@ const callbackPath = path.join(rootDir, 'src', 'gpu', 'callbacks', 'probability_
 const resourcesPath = path.join(rootDir, 'src', 'gpu', 'resources', 'probability_display.rs')
 
 const readProbabilityShader = async () => fs.readFile(shaderPath, 'utf8')
-const readRenderShader = async () => {
-  const shader = await readProbabilityShader()
-  return shader.split('pub(in crate::gpu) const PROBABILITY_RENDER_SHADER')[1] ?? ''
-}
+const readRenderShader = async () => fs.readFile(path.join(rootDir, 'src', 'gpu', 'shaders', 'probability_render.wgsl'), 'utf8')
 
 test('dense Probability rendering defines a GPU preaggregation shader', async () => {
   const shader = await readProbabilityShader()
