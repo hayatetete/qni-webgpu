@@ -4,16 +4,13 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 
 const rootDir = path.join(__dirname, '..')
-const shaderPath = path.join(rootDir, 'src', 'gpu', 'shaders', 'amplitude_display.rs')
+const shaderPath = path.join(rootDir, 'src', 'gpu', 'shaders', 'amplitude_render.wgsl')
 const paramsPath = path.join(rootDir, 'src', 'gpu', 'params.rs')
 const colorsPath = path.join(rootDir, 'src', 'colors.rs')
 const circuitGatesPath = path.join(rootDir, 'src', 'render', 'circuit_gates.rs')
 const dragPreviewPath = path.join(rootDir, 'src', 'render', 'circuit_palette', 'drag_preview.rs')
 
-const readRenderShader = async () => {
-  const shader = await fs.readFile(shaderPath, 'utf8')
-  return shader.split('pub(in crate::gpu) const AMPLITUDE_RENDER_SHADER')[1] ?? ''
-}
+const readRenderShader = async () => fs.readFile(shaderPath, 'utf8')
 
 test('Amplitude render params expose a disk border color', async () => {
   const params = await fs.readFile(paramsPath, 'utf8')
