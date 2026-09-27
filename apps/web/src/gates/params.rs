@@ -133,9 +133,10 @@ fn gate_matrix(kind: GateKind) -> GateMatrix {
 }
 
 // `GateParams` is the on-wire layout of a single gate operation handed to the
-// WGSL compute shader (`STATE_COMPUTE_SHADER` in `gpu.rs`). Each placed gate is
-// linearised into one of these so the GPU can apply it via per-pair matrix
-// multiply or, for Write0/Write1, a per-pair conditional swap.
+// WGSL compute shader (`STATE_COMPUTE_SHADER` in
+// `gpu/shaders/state_compute.wgsl`). Each placed gate is linearised into one
+// of these so the GPU can apply it via per-pair matrix multiply or, for
+// Write0/Write1, a per-pair conditional swap.
 pub(crate) const GATE_MODE_MATRIX: u32 = 0;
 pub(crate) const GATE_MODE_WRITE0: u32 = 1;
 pub(crate) const GATE_MODE_WRITE1: u32 = 2;
