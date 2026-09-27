@@ -189,7 +189,6 @@ test('real WGSL numeric kernels', async (t) => {
       })
     }
 
-    // Validate every sampled fixture before submitting any aggregate GPU work.
     const references = aggregateInstances.map((instance) =>
       ref.aggregateExpectedRows(instance, aggregateInput),
     )
