@@ -1,5 +1,4 @@
 type QniWebModule = {
-  default: () => Promise<void>
   circuit_library_clear: () => void
   circuit_library_delete: (id: string) => void
   circuit_library_list: () => string
@@ -18,6 +17,8 @@ type QniWebModule = {
 declare global {
   interface Window {
     __eguiError?: unknown
+    wasmBindings?: QniWebModule
+    __qniTrunkInitError?: Error
     __eguiReady?: boolean
     __eguiReadStateVector?: () => unknown[] | Promise<unknown[]>
     __eguiReadBlochVectors?: () => Promise<number[]>
@@ -50,6 +51,44 @@ const bootstrapScriptUrl = (): string => {
 
 const wasmModulePath = new URL('qni-web.js', bootstrapScriptUrl()).toString()
 const loadQniWeb = async (): Promise<QniWebModule> => import(wasmModulePath) as Promise<QniWebModule>
+
+const waitForTrunkInit = async (): Promise<void> => {
+  if (window.wasmBindings) return
+  if (window.__qniTrunkInitError) throw window.__qniTrunkInitError
+  // bootstrap から init() を呼ぶと wasm が二重に生成され、後発の instance が glue の wasm を上書きする。
+  // 起動中の app の callback が別 instance を参照し、"FnOnce called more than once" で起動が固まる。
+  // CI の遅い wasm 読み込みを許しつつ、Trunk が起動しない場合もエラー画面へ進める。
+  const timeoutMs = 30_000
+  await new Promise<void>((resolve, reject) => {
+    const timeoutError = 'Error: Trunk wasm initialization did not finish'
+    const cleanup = (): void => {
+      clearTimeout(timer)
+      window.removeEventListener('TrunkApplicationStarted', onStarted)
+      window.removeEventListener('error', onError, true)
+    }
+    const onStarted = (): void => {
+      cleanup()
+      if (window.__eguiError === timeoutError) {
+        window.__eguiError = undefined
+        hideStatus()
+      }
+      resolve()
+    }
+    const onError = (event: ErrorEvent): void => {
+      // Trunk の inline module script や wasm glue の未処理エラーは文面によらず初期化失敗。
+      if (event.filename !== window.location.href && event.filename !== wasmModulePath) return
+      cleanup()
+      reject(event.error instanceof Error ? event.error : new Error(event.message))
+    }
+    const timer = setTimeout(() => {
+      window.__eguiError = timeoutError
+      showStatus(`Asset load failed. Try a hard reload (Ctrl+Shift+R).\n\nTrunk wasm initialization did not finish`, 'asset')
+      window.removeEventListener('error', onError, true)
+    }, timeoutMs)
+    window.addEventListener('TrunkApplicationStarted', onStarted, { once: true })
+    window.addEventListener('error', onError, true)
+  })
+}
 
 const defaultQiskitBackendUrl = (): string => {
   if (window.location.port === '4174' && ['127.0.0.1', 'localhost'].includes(window.location.hostname)) {
@@ -177,8 +216,9 @@ const finishStartup = (): void => {
 const run = async (): Promise<void> => {
   let moduleInitialized = false
   try {
+    const loadedModule = await loadQniWeb()
+    await waitForTrunkInit()
     const {
-      default: init,
       circuit_library_clear,
       circuit_library_delete,
       circuit_library_list,
@@ -192,8 +232,7 @@ const run = async (): Promise<void> => {
       read_measurement_outcomes,
       read_state_vector,
       start,
-    } = await loadQniWeb()
-    await init()
+    } = window.wasmBindings ?? loadedModule
     moduleInitialized = true
     window.__eguiReadStateVector = async () => {
       try {
