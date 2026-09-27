@@ -77,7 +77,20 @@ test('bootstrap script loading failure shows a recovery hint', async ({ page }) 
 test('asset loading failure does not blame GPU access', async ({ page }) => {
   await page.route('**/qni-web.js', (route) => route.abort())
   await page.goto('/')
-  await page.getByTestId('webgpu-error').waitFor({ state: 'visible' })
+  await page.getByTestId('webgpu-error').waitFor({ state: 'visible', timeout: 10_000 })
+  expect({
+    message: await page.locator('#asset-error').innerText(),
+    gpuScreenVisible: await page.getByTestId('webgpu-error').locator('h1').isVisible(),
+  }).toEqual({
+    message: expect.stringContaining('Asset load failed. Try a hard reload'),
+    gpuScreenVisible: false,
+  })
+})
+
+test('wasm loading failure shows the asset error instead of blaming GPU access', async ({ page }) => {
+  await page.route('**/*_bg.wasm', (route) => route.abort())
+  await page.goto('/')
+  await page.getByTestId('webgpu-error').waitFor({ state: 'visible', timeout: 10_000 })
   expect({
     message: await page.locator('#asset-error').innerText(),
     gpuScreenVisible: await page.getByTestId('webgpu-error').locator('h1').isVisible(),

@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { EventEmitter } = require('node:events')
 
 const {
   dragPointer,
@@ -7,6 +8,7 @@ const {
   getDragPreviewAboveStatePanelProbe,
   releasePointer,
   sampleCanvasPixels,
+  waitForAppReady,
   waitForCanvasContent,
   waitForStartupReady,
   waitForStateVectorReady,
@@ -49,9 +51,13 @@ const makePage = ({ evaluateImpl = async () => null }: MockPageOptions = {}) => 
     waitForLoadState: [],
     waitForFunction: [],
   } as MockPageCalls
+  const events = new EventEmitter()
 
   return {
     calls,
+    on: events.on.bind(events),
+    off: events.off.bind(events),
+    emit: events.emit.bind(events),
     async evaluate(fn: Function, arg?: any) {
       calls.evaluate.push({ source: fn.toString(), arg })
       return evaluateImpl(fn, arg, calls.evaluate.length - 1)
@@ -125,6 +131,14 @@ const makeCanvasPage = ({ box = { x: 10, y: 20, width: 1000, height: 800 } }: Mo
     },
   }
 }
+
+test('waitForAppReady rejects on a pageerror before readiness', async () => {
+  const page = makePage()
+  page.waitForFunction = async () => new Promise<void>(() => {})
+  const waiting = waitForAppReady(page, 1_000)
+  page.emit('pageerror', new Error('Load failed'))
+  await assert.rejects(waiting, /Load failed/)
+})
 
 test('evaluateWithRetry retries execution-context-destroyed failures after waiting for app readiness', async () => {
   const page = makePage({
