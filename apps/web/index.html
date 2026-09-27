@@ -7,6 +7,15 @@
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <script>
+      // Trunk の module script の失敗は bootstrap が監視を始める前にも発生する。
+      window.addEventListener('error', (event) => {
+        if (event instanceof ErrorEvent &&
+            (event.filename === location.href || event.filename === new URL('qni-web.js', location.href).href)) {
+          window.__qniTrunkInitError = event.error || new Error(event.message)
+        }
+      }, true)
+    </script>
     <link data-trunk rel="rust" data-wasm-opt="z" data-target-name="qni_web" />
     <link data-trunk rel="copy-file" href=".trunk-generated/bootstrap.js" />
     <link data-trunk rel="copy-file" href="favicon.ico" />
