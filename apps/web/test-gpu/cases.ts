@@ -96,7 +96,7 @@ export function randomState(qubits: number, seed: number): C[] {
     return x / 4294967296 - 0.5
   }
   const state: C[] = Array.from({ length: 1 << qubits }, () => [next(), next()])
-  const norm = Math.hypot(...state.flat())
+  const norm = Math.sqrt(state.reduce((sum, [a, b]) => sum + a * a + b * b, 0))
   return state.map(([a, b]) => [Math.fround(a / norm), Math.fround(b / norm)])
 }
 export const gate = (bit: number, m: C[], controls?: Control): Op => ({ kind: 'gate', bit, m, controls })
@@ -124,6 +124,7 @@ export const aggregateInstances: AggregateInstance[] = [
   // 879.5 puts row 299 within 1e-3 of a boundary; 879.512 avoids that ambiguity.
   { rect_min: [0, 0], rect_size: [20, 879.512], slot: 10, span: 13, hovered_outcome: -1, render_mode: 0 },
   { rect_min: [0, 0], rect_size: [20, 1024], slot: 12, span: 16, hovered_outcome: -1, render_mode: 0 },
+  { rect_min: [0, 0], rect_size: [20, 0.5], slot: 14, span: 13, hovered_outcome: -1, render_mode: 0 },
 ]
 
 export const aggregateInput = Array.from({ length: 1 << 16 }, (_, i) =>
@@ -145,6 +146,16 @@ export const cases: RecomputeCase[] = [
     init: 'ground' as const,
     ops: [gate(Number(n) - 1, matrices[String(name)])],
   })),
+  ...(['S', 'T', 'Z'] as const).map((name) => ({
+    name: `${name} on plus`, qubits: 1,
+    init: [[Math.SQRT1_2, 0], [Math.SQRT1_2, 0]] as C[],
+    ops: [gate(0, matrices[name])],
+  })),
+  { name: 'T middle n16 random', qubits: 16, init: randomState(16, 113), ops: [gate(7, matrices.T)] },
+  { name: 'multi-workgroup controlled middle', qubits: 12, init: randomState(12, 71),
+    ops: [gate(5, matrices.T), gate(9, matrices.H, { mask: 3, value: 1 })] },
+  { name: 'write random', qubits: 5, init: randomState(5, 121),
+    ops: [{ kind: 'gate', bit: 2, m: matrices.X, mode: 1 }] },
   ...(['x', 'y', 'z', 'phase'] as const).map((axis) => ({
     name: `R${axis}`,
     qubits: 4,
@@ -180,6 +191,9 @@ export const cases: RecomputeCase[] = [
     ops: [gate(2, matrices.X), { kind: 'gate', bit: 2, m: matrices.X, mode: 1 }],
   },
   { name: 'write1', qubits: 4, init: 'ground', ops: [{ kind: 'gate', bit: 1, m: matrices.X, mode: 2 }] },
+  { name: 'write0 no swap', qubits: 1, init: 'ground', ops: [{ kind: 'gate', bit: 0, m: matrices.X, mode: 1 }] },
+  { name: 'write1 no swap', qubits: 1, init: [[0, 0], [1, 0]],
+    ops: [{ kind: 'gate', bit: 0, m: matrices.X, mode: 2 }] },
   ...[1, 5, 6, 10].map((qubits) => ({
     name: `measure n${qubits}`,
     qubits,
@@ -248,6 +262,8 @@ export const cases: RecomputeCase[] = [
     init: randomState(4, 35),
     ops: [{ kind: 'bloch' as const, bit, slot: 3 }],
   })),
+  { name: 'bloch stride high slot', qubits: 10, init: randomState(10, 123),
+    ops: [{ kind: 'bloch', bit: 5, slot: 63 }] },
   {
     name: 'bloch plus i',
     qubits: 1,

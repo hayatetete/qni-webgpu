@@ -1,8 +1,7 @@
-import { create, globals } from 'webgpu'
+import { create } from 'webgpu'
 export async function openGpu() {
   const [major, minor] = process.versions.node.split('.').map(Number)
   if (major < 22 || (major === 22 && minor < 12)) throw Error('webgpu requires Node >= 22.12 (require(esm))')
-  Object.assign(globalThis, globals)
   const selector = `adapter=${process.env.QNI_GPU_ADAPTER ?? 'AMD Radeon 8060S Graphics (RADV STRIX_HALO)'}`
   const gpu = create(['backend=vulkan', selector])
   const adapter = await gpu.requestAdapter()

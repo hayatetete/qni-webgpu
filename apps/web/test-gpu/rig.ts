@@ -6,6 +6,8 @@ import { scoped } from './gpu'
 import type { RecomputeCase } from './cases'
 import { globals } from 'webgpu'
 const U = (globals as typeof globalThis).GPUBufferUsage
+const ShaderStage = (globals as typeof globalThis).GPUShaderStage
+const MapMode = (globals as typeof globalThis).GPUMapMode
 const CANARY = 0x7fbadbad
 const words = (n: number) => {
   const a = new Uint32Array(n)
@@ -20,6 +22,18 @@ export type Output = {
   values: Float32Array
   bits: Uint32Array
   context?: string
+}
+type Task = { name: Kernel; params?: ArrayBuffer; groups: number[]; snapshot?: { slot: number; expected: number } }
+function slotStride(name: string) {
+  return name === 'probability'
+    ? rustConst('MAX_PROBABILITY_OUTCOMES') * 4
+    : name === 'amplitude'
+      ? rustConst('AMPLITUDE_VALUES_PER_SLOT') * 4
+      : name === 'density'
+        ? rustConst('DENSITY_VALUES_PER_SLOT') * 8
+        : name === 'aggregate'
+          ? rustConst('MAX_PROBABILITY_AGGREGATE_ROWS') * 4
+          : 16
 }
 export function createRig(device: GPUDevice) {
   const sizes = {
@@ -61,7 +75,7 @@ export function createRig(device: GPUDevice) {
       const layout = device.createBindGroupLayout({
         entries: spec.bindings.map((entry, i) => ({
           binding: i,
-          visibility: GPUShaderStage.COMPUTE,
+          visibility: ShaderStage.COMPUTE,
           buffer: {
             type: entry.endsWith(':u') ? 'uniform' : entry.endsWith(':r') ? 'read-only-storage' : 'storage',
           },
@@ -76,16 +90,7 @@ export function createRig(device: GPUDevice) {
     pipelines.set(name, result)
     return result
   }
-  const stride = (name: BufferName) =>
-    name === 'probability'
-      ? rustConst('MAX_PROBABILITY_OUTCOMES') * 4
-      : name === 'amplitude'
-        ? rustConst('AMPLITUDE_VALUES_PER_SLOT') * 4
-        : name === 'density'
-          ? rustConst('DENSITY_VALUES_PER_SLOT') * 8
-          : name === 'aggregate'
-            ? rustConst('MAX_PROBABILITY_AGGREGATE_ROWS') * 4
-            : 16
+  const stride = slotStride
   async function read(name: BufferName, slot: number, expected: number): Promise<Output> {
     const step = stride(name),
       startSlot = Math.max(0, slot - 1),
@@ -95,7 +100,7 @@ export function createRig(device: GPUDevice) {
     const enc = device.createCommandEncoder()
     enc.copyBufferToBuffer(buffers[name], startSlot * step, staging, 0, size)
     device.queue.submit([enc.finish()])
-    await staging.mapAsync(GPUMapMode.READ)
+    await staging.mapAsync(MapMode.READ)
     const bytes = staging.getMappedRange().slice(0)
     staging.unmap()
     staging.destroy()
@@ -109,18 +114,15 @@ export function createRig(device: GPUDevice) {
     }
   }
   async function execute(
-    tasks: {
-      name: Kernel
-      params?: ArrayBuffer
-      groups: number[]
-      snapshot?: { slot: number; expected: number }
-    }[],
+    tasks: Task[],
   ): Promise<Output[]> {
     return scoped(device, async () => {
       const encoder = device.createCommandEncoder()
       const live: GPUBuffer[] = []
       const snapshots: { slot: number; expected: number; buffer: GPUBuffer }[] = []
       for (const task of tasks) {
+        if (task.name === 'state_compute' || task.name === 'measure_collapse')
+          encoder.copyBufferToBuffer(canaryBuffer, 0, buffers[currentState === 0 ? 'stateB' : 'stateA'], 0, activeStateBytes)
         const { layout, pipeline: compiled } = await pipeline(task.name)
         const spec = kernels[task.name]
         const uniform =
@@ -170,7 +172,7 @@ export function createRig(device: GPUDevice) {
       for (const resource of live) resource.destroy()
       const results: Output[] = []
       for (const { buffer, slot, expected } of snapshots) {
-        await buffer.mapAsync(GPUMapMode.READ)
+        await buffer.mapAsync(MapMode.READ)
         const bytes = buffer.getMappedRange().slice(0)
         buffer.unmap()
         buffer.destroy()
@@ -187,9 +189,10 @@ export function createRig(device: GPUDevice) {
     })
   }
   let currentState = 0
-  const initialize = (name: BufferName) => {
+  let activeStateBytes = 0
+  const canary = (names: BufferName[]) => {
     const encoder = device.createCommandEncoder()
-    encoder.copyBufferToBuffer(canaryBuffer, 0, buffers[name], 0, sizes[name])
+    names.forEach((name) => encoder.copyBufferToBuffer(canaryBuffer, 0, buffers[name], 0, sizes[name]))
     device.queue.submit([encoder.finish()])
   }
   async function recompute(c: RecomputeCase) {
@@ -207,11 +210,10 @@ export function createRig(device: GPUDevice) {
         touched.add('densityMeta')
       }
     }
-    const clearEncoder = device.createCommandEncoder()
-    touched.forEach((name) => clearEncoder.copyBufferToBuffer(canaryBuffer, 0, buffers[name], 0, sizes[name]))
-    device.queue.submit([clearEncoder.finish()])
+    canary([...touched])
     currentState = 0
     const n = 1 << c.qubits
+    activeStateBytes = n * 8
     const init = new Float32Array(n * 2)
     if (c.init === 'ground') init[0] = 1
     else
@@ -221,12 +223,7 @@ export function createRig(device: GPUDevice) {
       })
     device.queue.writeBuffer(buffers.stateA, 0, init)
     const out: Output[] = []
-    const allTasks: {
-      name: Kernel
-      params: ArrayBuffer
-      groups: number[]
-      snapshot?: { slot: number; expected: number }
-    }[] = []
+    const allTasks: Task[] = []
     const trace: string[] = []
     for (const op of c.ops) {
       const control = ('controls' in op && op.controls) || { mask: 0, value: 0 }
@@ -306,12 +303,7 @@ export function createRig(device: GPUDevice) {
           break
       }
       const params = pack(kernels[name].uniform!, values)
-      const tasks: {
-        name: Kernel
-        params: ArrayBuffer
-        groups: number[]
-        snapshot?: { slot: number; expected: number }
-      }[] = [{ name, params, groups }]
+      const tasks: Task[] = [{ name, params, groups }]
       if (op.kind === 'probability') tasks[0].snapshot = { slot: op.slot, expected: 1 << op.span }
       if (name === 'probability_reduce') tasks.push({ name: 'probability_normalize', params, groups: [1] })
       trace.push(`${name} dispatch=${JSON.stringify(groups)} uniform=${Buffer.from(params).toString('hex')}`)
@@ -341,7 +333,7 @@ export function createRig(device: GPUDevice) {
     const enc = device.createCommandEncoder()
     enc.copyBufferToBuffer(stateBuffer, 0, stage, 0, n * 8)
     device.queue.submit([enc.finish()])
-    await stage.mapAsync(GPUMapMode.READ)
+    await stage.mapAsync(MapMode.READ)
     const state = new Float32Array(stage.getMappedRange().slice(0))
     stage.unmap()
     stage.destroy()
@@ -351,8 +343,7 @@ export function createRig(device: GPUDevice) {
     instances: Record<string, number | number[]>[],
     probabilities: { slot: number; data: number[] }[],
   ) {
-    initialize('probability')
-    initialize('aggregate')
+    canary(['probability', 'aggregate'])
     for (const p of probabilities)
       device.queue.writeBuffer(buffers.probability, p.slot * stride('probability'), new Float32Array(p.data))
     const packed = new Uint8Array(sizes.instances)
@@ -373,16 +364,7 @@ export function createRig(device: GPUDevice) {
   return { recompute, aggregate }
 }
 export function canaryViolations(o: Output): string[] {
-  const strideWords =
-    o.name === 'probability'
-      ? rustConst('MAX_PROBABILITY_OUTCOMES')
-      : o.name === 'amplitude'
-        ? rustConst('AMPLITUDE_VALUES_PER_SLOT')
-        : o.name === 'density'
-          ? rustConst('DENSITY_VALUES_PER_SLOT') * 2
-          : o.name === 'aggregate'
-            ? rustConst('MAX_PROBABILITY_AGGREGATE_ROWS')
-            : 4
+  const strideWords = slotStride(o.name) / 4
   const violations: string[] = []
   const incoherentStart = o.offset + 2 * rustConst('MAX_AMPLITUDE_OUTCOMES')
   for (let i = 0; i < o.bits.length; i++) {

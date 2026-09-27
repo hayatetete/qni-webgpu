@@ -77,6 +77,13 @@ test('fixed CPU reference values', () => {
     ).meta[2],
     1,
   )
+  const hand = amplitude(
+    [[0, Math.SQRT1_2], [Math.SQRT1_2, 0], [0, 0], [0, 0]], 0, 1,
+  )
+  const expectedKet = [[Math.SQRT1_2, 0], [0, -Math.SQRT1_2]]
+  hand.ket.forEach((value, i) => value.forEach((component, j) =>
+    assert.ok(Math.abs(component - expectedKet[i][j]) < 1e-14)))
+  hand.meta.forEach((value, i) => assert.ok(Math.abs(value - [1, 0, 1, 0][i]) < 1e-14))
   assert.equal(rand(0), 0.3175988495349884)
   assert.equal(rand(1), 0.238451287150383)
   assert.equal(rand(42), 0.42170950770378113)

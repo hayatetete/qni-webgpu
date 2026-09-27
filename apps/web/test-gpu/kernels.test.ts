@@ -152,7 +152,8 @@ test('real WGSL numeric kernels', async (t) => {
         const cpu = expected(c)
         const gpu = await rig.recompute(c)
         if (c.ops.some((op) => op.kind === 'gate' || op.kind === 'collapse')) {
-          const key = c.ops.some((op) => op.kind === 'collapse') ? 'measure_collapse' : 'state_compute'
+          const lastWriter = [...c.ops].reverse().find((op) => op.kind === 'gate' || op.kind === 'collapse')!
+          const key = lastWriter.kind === 'collapse' ? 'measure_collapse' : 'state_compute'
           const state = {
             name: 'state',
             slot: 0,
@@ -164,6 +165,7 @@ test('real WGSL numeric kernels', async (t) => {
           }
           record(key, c.name, state, cpu.state)
         }
+        assert.equal(gpu.outputs.length, cpu.outputs.length)
         gpu.outputs.forEach((output, index) => {
           const reference = cpu.outputs[index]
           assert.equal(output.name, reference.name)
@@ -191,7 +193,7 @@ test('real WGSL numeric kernels', async (t) => {
     const references = aggregateInstances.map((instance) =>
       ref.aggregateExpectedRows(instance, aggregateInput),
     )
-    const probabilities = [2, 8, 10, 12].map((slot) => ({ slot, data: aggregateInput }))
+    const probabilities = [2, 8, 10, 12, 14].map((slot) => ({ slot, data: aggregateInput }))
     const aggregated = await rig.aggregate(aggregateInstances, probabilities)
     for (const [index, instance] of aggregateInstances.entries()) {
       await t.test(`aggregate slot ${instance.slot}`, () => {

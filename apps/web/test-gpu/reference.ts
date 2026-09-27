@@ -5,7 +5,7 @@ export function aggregateExpectedRows(instance: AggregateInstance, input: number
   const rows = rustConst('MAX_PROBABILITY_AGGREGATE_ROWS')
   const sample = rustConst('PROBABILITY_RENDER_MODE_SAMPLE')
   const minSpan = rustConst('PROBABILITY_AGGREGATE_MIN_SPAN')
-  const body = Math.fround(instance.rect_size[1])
+  const body = Math.fround(Math.max(Math.fround(instance.rect_size[1]), 1))
   const rowH = Math.fround(body / (1 << instance.span))
 
   if (instance.render_mode === sample && instance.span >= minSpan) {
