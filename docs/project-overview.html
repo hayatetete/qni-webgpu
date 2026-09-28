@@ -642,7 +642,7 @@
       <div class="what">WGSL — 5 module<br><code>state / bloch / measure / digit / popup_value</code></div>
       <div class="note">
         <p><b>WGSL</b> (<em>WebGPU Shading Language</em>) — WebGPU 用の shader 言語。GLSL や HLSL に相当するが、よりモダンで型に厳しい。GPU 上で動く小さなプログラムを書く。種類は (a) <em>compute shader</em> (汎用並列計算)、(b) <em>vertex / fragment shader</em> (描画) の 2 系統。</p>
-        <p>このプロジェクトの shader は <code>gpu/shaders/</code> 配下に <code>&amp;'static str</code> として埋め込まれており、起動時に wgpu がコンパイルする。compute 側はゲートの状態ベクトル適用 / ブロッホ球縮約 / 測定崩壊を、fragment 側は状態ベクトル円・ブロッホ矢印・測定 0/1・popup 数値の描画を担当する。</p>
+        <p>このプロジェクトの shader は <code>gpu/shaders/*.wgsl</code> に置かれ、<code>include_str!</code> で <code>&amp;'static str</code> として埋め込まれており、起動時に wgpu がコンパイルする。compute 側はゲートの状態ベクトル適用 / ブロッホ球縮約 / 測定崩壊を、fragment 側は状態ベクトル円・ブロッホ矢印・測定 0/1・popup 数値の描画を担当する。</p>
       </div>
     </div>
 
@@ -864,7 +864,7 @@
       <div class="id">— principle E</div>
       <h3>render shader が storage バッファを直接 sample</h3>
       <p>state 円 / ブロッホ矢印 / 測定 0/1 / popup 数値はすべて <em>同じ</em> GPU 上の値を fragment shader から直接読む。CPU 経由しないので 1 frame 遅れも staging 割り当ても発生しない。値の表示が常に最新フレームの計算結果と同一であることが保証される。</p>
-      <p class="meta">gpu/shaders/{state,bloch,digit,popup_value}.rs</p>
+      <p class="meta">gpu/shaders/{state_render,bloch_overlay,measurement_digit,popup_value}.wgsl</p>
     </div>
     <div class="item">
       <div class="id">— principle F</div>
@@ -957,7 +957,7 @@
 
   <p class="lede" style="margin-top:24px;">
     結果として popup は <b>常に最新フレームの GPU 計算値</b> を表示する。CPU に値が一度も戻らないので、1 frame 遅れも staging buffer 確保も発生しない。<code>digit_atlas</code> (測定ゲートの "0" / "1" を表示する、glyph が 2 個だけの小型版) も同じ仕組みの兄弟モジュール。
-    <br><br>関連ソース: <code>gpu/popup_glyph_atlas.rs</code> (atlas を焼く) · <code>gpu/shaders/popup_value.rs</code> (上の 4 段を行う WGSL) · <code>gpu/resources/popup_value.rs</code> (pipeline と bind group の組み立て)
+    <br><br>関連ソース: <code>gpu/popup_glyph_atlas.rs</code> (atlas を焼く) · <code>gpu/shaders/popup_value.wgsl</code> (上の 4 段を行う WGSL) · <code>gpu/resources/popup_value.rs</code> (pipeline と bind group の組み立て)
   </p>
 
   <!-- ───────────── FRAME BUDGET ───────────── -->
@@ -1008,7 +1008,7 @@
     </div>
     <div class="step">05</div>
     <div class="what">
-      <b>shader 本体</b> · <code>src/gpu/shaders/state.rs</code> (compute / render)
+      <b>shader 本体</b> · <code>src/gpu/shaders/state_compute.wgsl</code> / <code>src/gpu/shaders/state_render.wgsl</code> (compute / render)
       <span class="why">2¹⁶ 並列で 2×2 行列をどう適用するか + state 円を 1 quad の fragment でどう全 cell 塗るかが両方ある。</span>
     </div>
     <div class="step">06</div>
