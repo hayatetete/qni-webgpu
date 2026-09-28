@@ -236,7 +236,8 @@ impl egui_wgpu::CallbackTrait for StateVectorCallback {
         );
         // One instanced draw of the panel quad — the fragment shader splits
         // it into per-cell circles. Replaces the previous N-instance loop
-        // (one quad per cell). See gpu/shaders.rs::STATE_RENDER_SHADER.
+        // (one quad per cell). See gpu/shaders/state_render.wgsl
+        // (STATE_RENDER_SHADER).
         render_pass.draw_indexed(0..resources.common.unit_quad_index_count, 0, 0..1);
     }
 }

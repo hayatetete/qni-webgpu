@@ -168,7 +168,7 @@
       <tbody>
         <tr><th>Quirk オリジナル</th><td><code>../oss/Quirk/src/gates/DensityMatrixDisplay.js</code> (Gate 定義 + GPU compute), <code>../oss/Quirk/src/draw/MathPainter.js</code> (<code>paintDensityMatrix</code>, <code>paintMatrixTooltip</code>, <code>_traceProbabilitySquare</code>, <code>_traceAmplitudeProbabilityCircle</code>, <code>_traceAmplitudePhaseDirection</code>)</td></tr>
         <tr><th>qni-webgpu 参考</th><td><code>docs/design-system/amplitude-display.html</code> (cell 描画モデル / GPU パイプライン / placeholder の親仕様、outline + disk + needle の語彙を 1:1 で踏襲), <code>docs/design-system/probability-display.html</code> (popup の <code>raw / log dB</code> 整形ロジックを対角 cell の popup と共有)</td></tr>
-        <tr><th>qni 既存パイプライン</th><td><code>apps/web/src/gpu/shaders/state.rs</code> (<code>cell_contribution</code> の disk + needle ロジック), <code>apps/web/src/gpu/resources/</code> (storage buffer + compute pass の組み立てパターン)</td></tr>
+        <tr><th>qni 既存パイプライン</th><td><code>apps/web/src/gpu/shaders/state_render.wgsl</code> (<code>cell_contribution</code> の disk + needle ロジック), <code>apps/web/src/gpu/resources/</code> (storage buffer + compute pass の組み立てパターン)</td></tr>
         <tr><th>Qiskit backend</th><td><code>apps/qiskit-backend/src/qni_qiskit_backend/circuit.py</code> (capture 追加箇所), <code>apps/qiskit-backend/src/qni_qiskit_backend/contract.py</code> (JSON 契約スキーマ), <code>apps/qiskit-backend/src/qni_qiskit_backend/runners.py</code> (Aer の <code>save_density_matrix(qubits=[...])</code> 呼び出し)</td></tr>
       </tbody>
     </table>
