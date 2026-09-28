@@ -892,7 +892,7 @@ snapshots:
   webgpu@0.6.1:
     dependencies:
       '@webgpu/types': 0.1.74
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@11.0.0)
     transitivePeerDependencies:
       - supports-color
 
