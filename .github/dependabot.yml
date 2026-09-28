@@ -12,6 +12,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # マイナー・パッチ更新をまとめ、メジャー更新は個別の PR にする。
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directories:
@@ -20,6 +25,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # マイナー・パッチ更新をまとめ、メジャー更新は個別の PR にする。
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: uv
     directories:
@@ -27,9 +37,19 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # マイナー・パッチ更新をまとめ、メジャー更新は個別の PR にする。
+    groups:
+      uv-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # マイナー・パッチ更新をまとめ、メジャー更新は個別の PR にする。
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
