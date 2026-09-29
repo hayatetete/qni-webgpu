@@ -1,6 +1,7 @@
 use std::env;
 use std::io::{self, Write};
 
+use ratatui::buffer::CellDiffOption;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
@@ -120,8 +121,8 @@ fn main() -> io::Result<()> {
 
     for y in 0..height {
         for x in 0..width {
-            let cell = buffer.get(x, y);
-            if cell.skip {
+            let cell = &buffer[(x, y)];
+            if cell.diff_option == CellDiffOption::Skip {
                 continue;
             }
             let fg = color_to_rgb(cell.fg);

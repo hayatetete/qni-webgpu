@@ -19,13 +19,13 @@ fn draw_once(
     drag_visual: Option<DragVisual>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
-        let area = frame.size();
+        let area = frame.area();
         let buffer = render_to_buffer_with_drag(state, area, debug_line, drag_visual);
         let frame_buffer = frame.buffer_mut();
         for y in 0..area.height {
             for x in 0..area.width {
-                let cell = buffer.get(area.x + x, area.y + y).clone();
-                *frame_buffer.get_mut(area.x + x, area.y + y) = cell;
+                let pos = (area.x + x, area.y + y);
+                frame_buffer[pos] = buffer[pos].clone();
             }
         }
     })?;
@@ -44,7 +44,6 @@ fn run() -> io::Result<()> {
         event::EnableMouseCapture
     )?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-    terminal.clear()?;
     loop {
         let drag_visual = app_state.dragging.and_then(|drag| {
             app_state.drag_pos.map(|(x, y)| DragVisual {
@@ -107,7 +106,7 @@ fn run() -> io::Result<()> {
                     if app_state.quit_confirm {
                         continue;
                     }
-                    let area = terminal.size()?;
+                    let area = terminal.size()?.into();
                     match mouse.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             handle_mouse_down(&mut app_state, mouse.column, mouse.row, area);

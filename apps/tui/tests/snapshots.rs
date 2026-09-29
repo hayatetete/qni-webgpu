@@ -11,13 +11,13 @@ fn snapshot_two_qubit_state_circles() {
 
     terminal
         .draw(|frame| {
-            let area = frame.size();
+            let area = frame.area();
             let buffer = render_to_buffer(&mut state, area, None);
             let frame_buffer = frame.buffer_mut();
             for y in 0..area.height {
                 for x in 0..area.width {
-                    let cell = buffer.get(area.x + x, area.y + y).clone();
-                    *frame_buffer.get_mut(area.x + x, area.y + y) = cell;
+                    let pos = (area.x + x, area.y + y);
+                    frame_buffer[pos] = buffer[pos].clone();
                 }
             }
         })
