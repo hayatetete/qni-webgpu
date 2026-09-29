@@ -15,6 +15,12 @@ impl QniApp {
         pointer_over_state_panel: bool,
         colors: &Colors,
     ) -> CircuitFrameState {
+        self.update_circuit_scroll_motion(ctx);
+        #[cfg(all(target_arch = "wasm32", debug_assertions))]
+        crate::test_hooks::set_window_value(
+            crate::test_hooks::QNI_CIRCUIT_SCROLL_X,
+            &wasm_bindgen::JsValue::from_f64(self.circuit_scroll_x as f64),
+        );
         let mut frame_state = CircuitFrameState {
             content_rect: None,
             dragging_gate_id: None,
@@ -37,6 +43,7 @@ impl QniApp {
                     egui::vec2(screen_rect.width(), content_height),
                     egui::Sense::click_and_drag(),
                 );
+                self.start_pending_paste_scroll(rect, ctx);
                 self.handle_input(rect, ctx, screen_rect, pointer_over_state_panel);
                 let content_changed = self.last_content_rect != Some(rect);
                 self.last_content_rect = Some(rect);

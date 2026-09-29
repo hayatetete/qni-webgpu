@@ -179,6 +179,8 @@ impl QniApp {
         self.copy_flash = None;
         self.paste_flashes.clear();
         self.circuit_motion = None;
+        self.circuit_scroll_motion = None;
+        self.pending_paste_scroll_gate_ids = None;
         self.active_cell = None;
         self.selection_drag = None;
         if !self

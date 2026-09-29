@@ -54,10 +54,21 @@ impl QniApp {
         // label strip on the left and the GPU callback viewports stay
         // on `rect.min` so they don't track the scroll.
         let circuit_origin = rect.min - egui::vec2(scroll_x, 0.0);
-        for &line_y in &metrics.line_ys {
+        let placed_wire_count = self.required_visible_wire_count();
+        let preview_wire_count = self
+            .paste_preview()
+            .filter(|_| !self.library.active_locked())
+            .map(|(anchor, (_, height))| anchor.wire.as_usize().saturating_add(height))
+            .unwrap_or(placed_wire_count);
+        for (index, &line_y) in metrics.line_ys.iter().enumerate() {
             let start = circuit_origin + egui::vec2(metrics.line_left, line_y);
             let end = circuit_origin + egui::vec2(metrics.line_right, line_y);
-            painter.line_segment([start, end], egui::Stroke::new(2.0, colors.line));
+            let line_color = if index >= placed_wire_count && index < preview_wire_count {
+                with_alpha(colors.line, 80)
+            } else {
+                colors.line
+            };
+            painter.line_segment([start, end], egui::Stroke::new(2.0, line_color));
         }
 
         // Step-preview vertical bars at the right edge of the
@@ -161,6 +172,11 @@ impl QniApp {
             // otherwise the leftmost gates would slide under fixed
             // "q0:" / "q1:" labels and visually collide.
             let label_pos = circuit_origin + egui::vec2(CIRCUIT_PADDING, line_y - 7.0);
+            let label_color = if index >= placed_wire_count && index < preview_wire_count {
+                with_alpha(colors.text, 80)
+            } else {
+                colors.text
+            };
             painter.text(
                 label_pos,
                 egui::Align2::LEFT_TOP,
@@ -168,7 +184,7 @@ impl QniApp {
                 // text-sm (14 px) — Tailwind. Monospace keeps q0:/q1: wire
                 // labels aligned with angle labels and state-panel numerals.
                 egui::FontId::monospace(14.0),
-                colors.text,
+                label_color,
             );
         }
     }

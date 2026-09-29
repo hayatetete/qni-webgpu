@@ -193,7 +193,7 @@ impl QniApp {
             .expect("required qubit count is clamped to at least one")
     }
 
-    pub(super) fn required_visible_wire_count(&self) -> usize {
+    pub(crate) fn required_visible_wire_count(&self) -> usize {
         self.required_qubit_count().get().max(MIN_QUBITS)
     }
 

@@ -60,6 +60,8 @@ pub(crate) struct QniApp {
     pub(crate) copy_flash: Option<circuit_clipboard::CopyFlash>,
     pub(crate) paste_flashes: Vec<circuit_clipboard::PasteFlash>,
     pub(crate) circuit_motion: Option<circuit_clipboard::CircuitMotion>,
+    circuit_scroll_motion: Option<circuit_clipboard::CircuitScrollMotion>,
+    pending_paste_scroll_gate_ids: Option<BTreeSet<GateId>>,
     active_cell: Option<circuit_clipboard::CircuitCell>,
     selection_drag: Option<drag_controller::SelectionDrag>,
     /// Horizontal scroll offset for the circuit area, in egui pixels.
@@ -286,6 +288,8 @@ impl QniApp {
             copy_flash: None,
             paste_flashes: Vec::new(),
             circuit_motion: None,
+            circuit_scroll_motion: None,
+            pending_paste_scroll_gate_ids: None,
             active_cell: None,
             selection_drag: None,
             circuit_scroll_x: 0.0,
@@ -345,10 +349,16 @@ impl QniApp {
     fn layout_qubits(&self) -> usize {
         let capacity = self.exec_mode.qubit_capacity().get();
         let mut count = self.qubit_count.clamp(MIN_QUBITS, capacity);
+        if let Some((anchor, (_, height))) = self
+            .paste_preview()
+            .filter(|_| !self.library.active_locked())
+        {
+            count = count.max(anchor.wire.as_usize().saturating_add(height));
+        }
         if self.dragging.is_some() && count < capacity {
             count += 1;
         }
-        count
+        count.min(capacity)
     }
 
     pub(crate) fn local_state_vector_active(&self) -> bool {

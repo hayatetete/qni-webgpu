@@ -9,8 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use super::{CircuitColumnIndex, GateId, GateIdAllocator, PlacedGate, WireIndex};
+use crate::constants::CIRCUIT_PADDING;
 use crate::gates::{GateKind, GateSpan, ParametricAngle};
-use crate::layout::gate_width_cols;
+use crate::layout::{gate_visible_rect, gate_width_cols, layout_metrics};
 use crate::qubit_count::QubitCapacity;
 use crate::shared::now_seconds;
 
@@ -19,11 +20,52 @@ const PASTE_FLASH_SECS: f64 = 0.5;
 const PASTE_REVEAL_DELAY_SECS: f64 = CIRCUIT_MOTION_SECS + 0.03;
 const FLASH_OVERLAY_STRENGTH: f32 = 0.35;
 const CIRCUIT_MOTION_SECS: f64 = 0.12;
+const CIRCUIT_SCROLL_SECS: f64 = 0.18;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CircuitMotion {
     start_offsets_x: BTreeMap<GateId, f32>,
     started_at: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CircuitScrollMotion {
+    from_x: f32,
+    target_x: f32,
+    started_at: f64,
+}
+
+impl CircuitScrollMotion {
+    fn x(self, now: f64) -> f32 {
+        let t = ((now - self.started_at) / CIRCUIT_SCROLL_SECS).clamp(0.0, 1.0) as f32;
+        self.from_x + (self.target_x - self.from_x) * (1.0 - (1.0 - t).powi(3))
+    }
+
+    fn finished(self, now: f64) -> bool {
+        now - self.started_at >= CIRCUIT_SCROLL_SECS
+    }
+
+}
+
+fn circuit_scroll_target_x(
+    current_x: f32,
+    viewport_width: f32,
+    content_right: f32,
+    target_left: f32,
+    target_right: f32,
+) -> f32 {
+    let viewport_right = current_x + viewport_width;
+    let target_x = if target_left < current_x + CIRCUIT_PADDING {
+        target_left - CIRCUIT_PADDING
+    } else if target_right > viewport_right - CIRCUIT_PADDING {
+        target_right - viewport_width + CIRCUIT_PADDING
+    } else {
+        current_x
+    };
+    target_x.clamp(
+        0.0,
+        (content_right + CIRCUIT_PADDING - viewport_width).max(0.0),
+    )
 }
 
 impl CircuitMotion {
@@ -443,6 +485,19 @@ impl super::QniApp {
             .and_then(|motion| motion.offset_x(gate_id, now))
     }
 
+    pub(crate) fn update_circuit_scroll_motion(&mut self, ctx: &eframe::egui::Context) {
+        let Some(motion) = self.circuit_scroll_motion else {
+            return;
+        };
+        let now = now_seconds();
+        self.circuit_scroll_x = motion.x(now);
+        if motion.finished(now) {
+            self.circuit_scroll_motion = None;
+        } else {
+            ctx.request_repaint();
+        }
+    }
+
     pub(crate) fn paste_preview(&self) -> Option<(CircuitCell, (usize, usize))> {
         let cell = self.active_cell?;
         let fragment = self.circuit_clipboard.as_ref()?;
@@ -590,7 +645,7 @@ impl super::QniApp {
         let pasted_gate_ids = next_gates[self.placed_gates.len()..]
             .iter()
             .map(|gate| gate.id)
-            .collect();
+            .collect::<BTreeSet<_>>();
 
         let now = now_seconds();
         let motion = CircuitMotion::between(
@@ -602,6 +657,7 @@ impl super::QniApp {
         self.begin_circuit_commit();
         self.placed_gates = next_gates;
         self.circuit_motion = motion;
+        self.pending_paste_scroll_gate_ids = Some(pasted_gate_ids.clone());
         self.paste_flashes.retain(|flash| flash.is_active(now));
         self.paste_flashes.push(PasteFlash {
             gate_ids: pasted_gate_ids,
@@ -615,6 +671,41 @@ impl super::QniApp {
         if self.commit_current_circuit(ctx) {
             self.gpu_plan.mark_dirty();
             self.clear_gpu_plan_capacity_error();
+        }
+    }
+
+    pub(crate) fn start_pending_paste_scroll(
+        &mut self,
+        rect: eframe::egui::Rect,
+        ctx: &eframe::egui::Context,
+    ) {
+        let Some(pasted_gate_ids) = self.pending_paste_scroll_gate_ids.take() else {
+            return;
+        };
+        let metrics = layout_metrics(rect.width(), self.layout_qubits(), self.min_circuit_slots());
+        let pasted_rect = self
+            .placed_gates
+            .iter()
+            .filter(|gate| pasted_gate_ids.contains(&gate.id))
+            .map(|gate| gate_visible_rect(gate, gate.pos))
+            .reduce(|left, right| left.union(right));
+        let Some(pasted_rect) = pasted_rect else {
+            return;
+        };
+        let target_x = circuit_scroll_target_x(
+            self.circuit_scroll_x,
+            rect.width(),
+            metrics.line_right,
+            pasted_rect.left(),
+            pasted_rect.right(),
+        );
+        if (target_x - self.circuit_scroll_x).abs() > f32::EPSILON {
+            self.circuit_scroll_motion = Some(CircuitScrollMotion {
+                from_x: self.circuit_scroll_x,
+                target_x,
+                started_at: now_seconds(),
+            });
+            ctx.request_repaint();
         }
     }
 
@@ -712,6 +803,25 @@ mod tests {
         assert_eq!(
             motion.offset_x(GateId::from_u32(1), 10.0 + CIRCUIT_MOTION_SECS),
             None
+        );
+    }
+
+    #[test]
+    fn circuit_scroll_motion_finishes_at_target() {
+        let motion = CircuitScrollMotion {
+            from_x: 20.0,
+            target_x: 100.0,
+            started_at: 10.0,
+        };
+
+        assert_eq!(motion.x(10.0 + CIRCUIT_SCROLL_SECS), 100.0);
+    }
+
+    #[test]
+    fn circuit_scroll_reveals_target_beyond_viewport_right_edge() {
+        assert_eq!(
+            circuit_scroll_target_x(0.0, 200.0, 400.0, 240.0, 280.0),
+            112.0
         );
     }
 
