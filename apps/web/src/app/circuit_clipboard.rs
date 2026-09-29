@@ -44,7 +44,6 @@ impl CircuitScrollMotion {
     fn finished(self, now: f64) -> bool {
         now - self.started_at >= CIRCUIT_SCROLL_SECS
     }
-
 }
 
 fn circuit_scroll_target_x(
@@ -657,7 +656,7 @@ impl super::QniApp {
         self.begin_circuit_commit();
         self.placed_gates = next_gates;
         self.circuit_motion = motion;
-        self.pending_paste_scroll_gate_ids = Some(pasted_gate_ids.clone());
+        self.start_paste_scroll(&pasted_gate_ids, ctx);
         self.paste_flashes.retain(|flash| flash.is_active(now));
         self.paste_flashes.push(PasteFlash {
             gate_ids: pasted_gate_ids,
@@ -674,15 +673,17 @@ impl super::QniApp {
         }
     }
 
-    pub(crate) fn start_pending_paste_scroll(
+    fn start_paste_scroll(
         &mut self,
-        rect: eframe::egui::Rect,
+        pasted_gate_ids: &BTreeSet<GateId>,
         ctx: &eframe::egui::Context,
     ) {
-        let Some(pasted_gate_ids) = self.pending_paste_scroll_gate_ids.take() else {
-            return;
-        };
-        let metrics = layout_metrics(rect.width(), self.layout_qubits(), self.min_circuit_slots());
+        let viewport_width = ctx.content_rect().width();
+        let metrics = layout_metrics(
+            viewport_width,
+            self.layout_qubits(),
+            self.min_circuit_slots(),
+        );
         let pasted_rect = self
             .placed_gates
             .iter()
@@ -694,7 +695,7 @@ impl super::QniApp {
         };
         let target_x = circuit_scroll_target_x(
             self.circuit_scroll_x,
-            rect.width(),
+            viewport_width,
             metrics.line_right,
             pasted_rect.left(),
             pasted_rect.right(),
@@ -804,6 +805,17 @@ mod tests {
             motion.offset_x(GateId::from_u32(1), 10.0 + CIRCUIT_MOTION_SECS),
             None
         );
+    }
+
+    #[test]
+    fn circuit_scroll_motion_interpolates_between_endpoints() {
+        let motion = CircuitScrollMotion {
+            from_x: 20.0,
+            target_x: 100.0,
+            started_at: 10.0,
+        };
+
+        assert!((20.0..100.0).contains(&motion.x(10.0 + CIRCUIT_SCROLL_SECS / 2.0)));
     }
 
     #[test]

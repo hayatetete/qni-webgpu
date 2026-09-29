@@ -61,7 +61,6 @@ pub(crate) struct QniApp {
     pub(crate) paste_flashes: Vec<circuit_clipboard::PasteFlash>,
     pub(crate) circuit_motion: Option<circuit_clipboard::CircuitMotion>,
     circuit_scroll_motion: Option<circuit_clipboard::CircuitScrollMotion>,
-    pending_paste_scroll_gate_ids: Option<BTreeSet<GateId>>,
     active_cell: Option<circuit_clipboard::CircuitCell>,
     selection_drag: Option<drag_controller::SelectionDrag>,
     /// Horizontal scroll offset for the circuit area, in egui pixels.
@@ -289,7 +288,6 @@ impl QniApp {
             paste_flashes: Vec::new(),
             circuit_motion: None,
             circuit_scroll_motion: None,
-            pending_paste_scroll_gate_ids: None,
             active_cell: None,
             selection_drag: None,
             circuit_scroll_x: 0.0,

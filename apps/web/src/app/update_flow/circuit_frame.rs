@@ -43,7 +43,6 @@ impl QniApp {
                     egui::vec2(screen_rect.width(), content_height),
                     egui::Sense::click_and_drag(),
                 );
-                self.start_pending_paste_scroll(rect, ctx);
                 self.handle_input(rect, ctx, screen_rect, pointer_over_state_panel);
                 let content_changed = self.last_content_rect != Some(rect);
                 self.last_content_rect = Some(rect);

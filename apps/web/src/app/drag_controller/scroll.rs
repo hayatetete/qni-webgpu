@@ -37,7 +37,6 @@ impl DragController {
             };
             if dx != 0.0 {
                 app.circuit_scroll_motion = None;
-                app.pending_paste_scroll_gate_ids = None;
                 let max_scroll = max_circuit_scroll(metrics, content_rect.width());
                 app.circuit_scroll_x = (app.circuit_scroll_x - dx).clamp(0.0, max_scroll);
                 ctx.request_repaint();

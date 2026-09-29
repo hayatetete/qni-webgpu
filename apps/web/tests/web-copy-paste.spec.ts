@@ -10,7 +10,6 @@ const EGUI_PANEL_MARGIN = 8
 const CIRCUIT_PICKER_TOOLBAR_SHIFT = 98
 const SELECTION_BORDER: [number, number, number, number] = [32, 94, 166, 255]
 const HOVER_BORDER: [number, number, number, number] = [139, 126, 200, 255]
-const CANVAS_BACKGROUND: [number, number, number, number] = [242, 240, 229, 255]
 
 // These interaction tests share a software WebGPU adapter. Running them in one
 // worker avoids frame starvation changing the ordering of pointer/key events.
@@ -107,12 +106,11 @@ test('repeated Ctrl+V keeps the original paste anchor', async ({ page }) => {
 
 test('paste scrolls smoothly to reveal an insertion beyond the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 720 })
-  await openCircuit(page, '{"cols":[["H"]]}')
-  await clickGate(page, 0, 0)
+  await openCircuit(page, '{"cols":[[1],[1],[1],[1],[1],[1],[1],[1],[1],[1],["H"]]}')
+  await pressShortcut(page, 'Control+A')
   await pressShortcut(page, 'Control+C')
-  await clickGate(page, 5, 0)
   await pressShortcut(page, 'Control+V')
-  await waitForCircuitJson(page, '{"cols":[["H"],[1],[1],[1],[1],[1],["H"]]}')
+  await waitForCircuitJson(page, '{"cols":[[1],[1],[1],[1],[1],[1],[1],[1],[1],[1],["H"],["H"]]}')
   await expect.poll(() => page.evaluate(() => (window as any).__qniCircuitScrollX ?? 0)).toBeGreaterThan(0)
 })
 
@@ -122,12 +120,9 @@ test('paste preview draws a ghost wire for a future qubit', async ({ page }) => 
   await pressShortcut(page, 'Control+C')
   const anchor = await circuitCellPoint(page, 1, 1)
   await page.mouse.click(anchor.x, anchor.y)
-  const probe = await circuitCellPoint(page, 0, 2)
-  const pixels = await sampleCanvasPixels(page, page.locator('#egui-canvas'), [
-    { name: 'futureWire', x: probe.x, y: probe.y },
-  ])
+  await page.waitForTimeout(600)
 
-  expect(pixelRgbDistance(pixels.futureWire, CANVAS_BACKGROUND)).toBeGreaterThan(12)
+  await expect(page.locator('#egui-canvas')).toHaveScreenshot('paste-future-wire.png')
 })
 
 test('copying either side of a CNOT preserves the controlled structure', async ({ page }) => {
