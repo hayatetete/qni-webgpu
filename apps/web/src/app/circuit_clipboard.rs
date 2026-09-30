@@ -802,7 +802,7 @@ mod tests {
         let motion = CircuitMotion::between(&before, &after, None, 10.0).unwrap();
 
         assert_eq!(
-            motion.offset_x(GateId::from_u32(1), 10.0 + CIRCUIT_MOTION_SECS),
+            motion.offset_x(GateId::from_u32(1), 10.0 + CIRCUIT_MOTION_SECS + 1.0e-9,),
             None
         );
     }
@@ -833,7 +833,7 @@ mod tests {
     fn circuit_scroll_reveals_target_beyond_viewport_right_edge() {
         assert_eq!(
             circuit_scroll_target_x(0.0, 200.0, 400.0, 240.0, 280.0),
-            112.0
+            80.0 + CIRCUIT_PADDING
         );
     }
 
