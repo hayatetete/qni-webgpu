@@ -137,9 +137,11 @@ impl DragController {
             start,
             current: start,
             click_cell,
-            initial_selection: additive
-                .then(|| app.selected_gate_ids.clone())
-                .unwrap_or_default(),
+            initial_selection: if additive {
+                app.selected_gate_ids.clone()
+            } else {
+                Default::default()
+            },
         });
     }
 

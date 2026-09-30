@@ -72,17 +72,18 @@ impl QniApp {
             .filter(|gate| group.contains(&gate.id));
         let first = gates.next()?;
         let first_kind = first.kind;
-        let frame_rect = std::iter::once(first).chain(gates).fold(
-            egui::Rect::NOTHING,
-            |rect, gate| {
-                let motion_x = self
-                    .circuit_motion_offset_x(gate.id, now)
-                    .unwrap_or_default();
-                let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
-                let gate_rect = gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
-                rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
-            },
-        );
+        let frame_rect =
+            std::iter::once(first)
+                .chain(gates)
+                .fold(egui::Rect::NOTHING, |rect, gate| {
+                    let motion_x = self
+                        .circuit_motion_offset_x(gate.id, now)
+                        .unwrap_or_default();
+                    let rendered_pos = gate.pos + egui::vec2(motion_x, 0.0);
+                    let gate_rect =
+                        gate_visible_rect(gate, circuit_origin + rendered_pos.to_vec2());
+                    rect.union(span_resize_body_rect(gate.kind, gate.span.get(), gate_rect))
+                });
         let corner_radius = if group.len() == 1 {
             hover_frame_corner_radius(first_kind)
         } else {

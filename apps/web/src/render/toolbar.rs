@@ -95,7 +95,10 @@ impl QniApp {
         let area = egui::Area::new(egui::Id::new("shortcut_help_popover"))
             .order(egui::Order::Tooltip)
             .pivot(egui::Align2::RIGHT_TOP)
-            .fixed_pos(egui::pos2(trigger_rect.right(), trigger_rect.bottom() + 6.0))
+            .fixed_pos(egui::pos2(
+                trigger_rect.right(),
+                trigger_rect.bottom() + 6.0,
+            ))
             .show(ctx, |ui| {
                 popover_frame(colors).show(ui, |ui| {
                     ui.set_width(width - 20.0);

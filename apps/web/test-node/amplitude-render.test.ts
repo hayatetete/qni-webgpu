@@ -60,7 +60,7 @@ test('Amplitude rendering keeps outlines enabled for 15-qubit-sized cells', asyn
 test('Amplitude circuit rendering delegates visible body selection to span resize', async () => {
   const circuitGates = await fs.readFile(circuitGatesPath, 'utf8')
 
-  assert.match(circuitGates, /let body_rect = span_resize_body_rect\(gate\.kind, gate\.span\.get\(\), gate_rect\);[\s\S]*draw_gate_body\(painter, body_rect, gate\.kind, colors\)/)
+  assert.match(circuitGates, /let body_rect = span_resize_body_rect\(gate\.kind, gate\.span\.get\(\), gate_rect\);[\s\S]*draw_gate_body\(painter, body_rect, gate\.kind, gate_colors\)/)
 })
 
 test('Amplitude span resize body selection uses the matrix draw area', async () => {

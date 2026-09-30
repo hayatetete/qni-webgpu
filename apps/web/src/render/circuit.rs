@@ -148,10 +148,7 @@ impl QniApp {
 
         // Selection rubber-band is interaction chrome, so it must stay above
         // opaque and GPU-backed gate bodies alike.
-        if let Some(selection_rect) = self
-            .selection_drag_rect()
-            .filter(|_| edit_feedback_visible)
-        {
+        if let Some(selection_rect) = self.selection_drag_rect().filter(|_| edit_feedback_visible) {
             let selection_rect = selection_rect.translate(circuit_origin.to_vec2());
             painter.rect_filled(
                 selection_rect,
