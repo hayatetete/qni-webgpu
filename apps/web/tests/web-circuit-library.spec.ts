@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { waitForStartupReady } from './support/web-spec-helpers'
+import { waitForStartupReady, waitForValue } from './support/web-spec-helpers'
 
 const STORAGE_KEY = 'qni.circuit_library.v2'
 
@@ -75,24 +75,23 @@ const libraryClear = async (page: Page): Promise<void> =>
   })
 
 const waitForEmptyLibrary = async (page: Page): Promise<LibraryDocument> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const document = await libraryList(page)
-    if (document.active_id === null && document.entries.length === 0) return document
-    await page.waitForTimeout(50)
-  }
-  throw new Error('localStorage circuit library did not become empty')
+  return await waitForValue(
+    () => libraryList(page),
+    (document) => document.active_id === null && document.entries.length === 0,
+    'localStorage circuit library did not become empty',
+  )
 }
 
 const clearLibraryUntilEmpty = async (page: Page): Promise<LibraryDocument> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    await libraryClear(page)
-    const document = await libraryList(page)
-    if (document.active_id === null && document.entries.length === 0) return document
-    await page.waitForTimeout(50)
-  }
-  throw new Error('localStorage circuit library cleanup did not settle')
+  return await waitForValue(
+    async () => {
+      await libraryClear(page)
+      return await libraryList(page)
+    },
+    (document) => document.active_id === null && document.entries.length === 0,
+    'localStorage circuit library cleanup did not settle',
+  )
 }
-
 const errorMessage = async (operation: () => Promise<unknown>): Promise<string> => {
   try {
     await operation()

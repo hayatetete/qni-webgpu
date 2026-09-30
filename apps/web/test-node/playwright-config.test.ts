@@ -111,13 +111,34 @@ test('playwright config uses a bounded multi-worker count on CI', () => {
   }
   const config = loadConfig(env)
 
-  assert.equal(config.workers, 6)
+  assert.equal(config.workers, 2)
 })
 
-test('playwright config uses the same bounded worker count outside CI', () => {
+test('playwright config allows one more worker outside CI', () => {
   const config = loadConfig({ ...process.env, CI: undefined })
 
-  assert.equal(config.workers, 6)
+  assert.equal(config.workers, 3)
+})
+
+// 固まりや描画待ちの取りこぼしは環境の性能で頻度が変わる。上限まで落ちるものは
+// 本当の退行として扱いたいので、再試行の回数を環境ごとに固定する。
+test('playwright config retries a failing test once outside CI', () => {
+  const config = loadConfig({ ...process.env, CI: undefined })
+
+  assert.equal(config.retries, 1)
+})
+
+test('playwright config retries a failing test twice on CI', () => {
+  const config = loadConfig({ ...process.env, CI: '1' })
+
+  assert.equal(config.retries, 2)
+})
+
+// アニメーション待ちは CPU 飽和時に既定の 30 秒を超えることがある。
+test('playwright config raises the per-test timeout above the default', () => {
+  const config = loadConfig({ ...process.env, CI: undefined })
+
+  assert.equal(config.timeout, 60_000)
 })
 
 test('playwright config can reuse an externally managed web server', () => {

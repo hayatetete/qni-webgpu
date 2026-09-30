@@ -107,7 +107,7 @@ pub(super) fn draw_state_minimap(
     let mm_vp_rect = egui::Rect::from_min_size(mm_vp_min, mm_vp_size)
         .intersect(egui::Rect::from_min_size(mm_grid_min, mm_grid_size));
     let vp_fill = colors.minimap_viewport_fill;
-    let vp_stroke = egui::Stroke::new(1.0, colors.minimap_viewport_stroke);
+    let vp_stroke = egui::Stroke::new(1.0_f32, colors.minimap_viewport_stroke);
     painter.rect_filled(mm_vp_rect, egui::CornerRadius::ZERO, vp_fill);
     painter.rect_stroke(
         mm_vp_rect,

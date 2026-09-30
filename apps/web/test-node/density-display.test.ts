@@ -13,10 +13,7 @@ const densityPreviewBodySource = async (): Promise<string> => {
   const source = await readText(path.join(rootDir, 'src', 'icons', 'gate_body.rs'))
   return source.split('fn draw_density_preview_body')[1].split('pub(crate) fn draw_density_palette_icon')[0]
 }
-const densityRenderShaderSource = async (): Promise<string> => {
-  const source = await readText(path.join(rootDir, 'src', 'gpu', 'shaders', 'density_matrix_display.rs'))
-  return source.split('pub(in crate::gpu) const DENSITY_RENDER_SHADER')[1]
-}
+const densityRenderShaderSource = async (): Promise<string> => readText(path.join(rootDir, 'src', 'gpu', 'shaders', 'density_render.wgsl'))
 
 test('Density palette icon maximizes circles without touching the frame', async () => {
   const source = await densityPaletteIconSource()

@@ -1,0 +1,246 @@
+/* アプリ内の書体を使い、OS ごとの代替フォントで配置がずれないようにする。 */
+@font-face { font-family: 'Qni Geist'; src: url('Geist-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Qni Geist'; src: url('Geist-Bold.ttf') format('truetype'); font-weight: 700 900; font-display: swap; }
+@font-face { font-family: 'Qni Geist Mono'; src: url('GeistMono-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+
+/* ===== 配色: Flexoki Light の名前付きトーン ===== */
+  :root {
+    --bg: #FFFCF0;        /* Flexoki bg (paper) */
+    --bg-2: #F2F0E5;      /* Flexoki bg-2 (base-50) */
+    --ui: #E6E4D9;        /* Flexoki ui (base-100) */
+    --ui-2: #DAD8CE;      /* Flexoki ui-2 (base-150) */
+    --ui-3: #CECDC3;      /* Flexoki ui-3 (base-200) */
+    --tx-3: #B7B5AC;      /* Flexoki tx-3 (base-300) — 装飾のみ */
+    --tx-2: #6F6E69;      /* Flexoki tx-2 (base-600) */
+    --tx: #100F0F;        /* Flexoki tx (black) */
+    --orange-400: #DA702C;/* Flexoki orange-400 */
+    --blue-200: #92BFDB;  /* Flexoki blue-200 */
+    --blue-400: #4385BE;  /* Flexoki blue-400 */
+    --blue-600: #205EA6;  /* Flexoki blue-600 */
+    --purple-600: #5E409D;/* Flexoki purple-600 */
+    --yellow-400: #D0A215;/* Flexoki yellow-400 */
+    --purple-50: #F0EAEC; /* Flexoki purple-50 */
+    --snap: 1.6s;         /* 線を描いてクレヨンが折れるまで */
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  
+  #app-status {
+    position: fixed; inset: 0; z-index: 10;
+    overflow-y: auto;
+    background: var(--bg);
+    color: var(--tx);
+    font-family: 'Qni Geist', sans-serif;
+    font-size: 16px; line-height: 24px;  /* text-base */
+    overflow-x: clip;
+  }
+  :focus-visible { outline: 2px solid var(--blue-600); outline-offset: 2px; } /* blue-600 / spacing-0.5 */
+  .sr-only { position: fixed; margin: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---- 構図: 上に大きな落書き、下に短い文。中央寄せで余白を広く取る ---- */
+  #app-status[hidden] { display: none; }
+  .stage {
+    min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px;                           /* spacing-6 */
+    padding: 40px 16px;                  /* spacing-10 / spacing-4 */
+  }
+  .art { width: min(1080px, 100%); }
+  .art svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  /* ---- 落書きの部品 ---- */
+  .crayon-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .c-blue   { stroke: var(--blue-600); stroke-width: 7; }   /* blue-600: 折れたクレヨンの色 */
+  /* 線の太さのゆれ (押す力の強弱) */
+  .w3 { stroke-width: 3; } .w5 { stroke-width: 5; } .w9 { stroke-width: 9; } .w12 { stroke-width: 12; }
+  .faint { opacity: .6; }
+  .ink { mix-blend-mode: multiply; }                        /* 色の重なりを濃くする */
+  .c-orange { stroke: var(--orange-400); stroke-width: 6; } /* orange-400: H ゲート */
+  .c-purple { stroke: var(--purple-600); stroke-width: 6; } /* purple-600: CNOT */
+  .c-yellow { stroke: var(--yellow-400); stroke-width: 5; } /* yellow-400: すみの太陽 */
+  .c-impact { stroke: var(--orange-400); stroke-width: 4; } /* orange-400: 折れた瞬間の線 */
+  .pencil   { fill: none; stroke: var(--tx-3); stroke-width: 2.5; stroke-dasharray: 7 9; stroke-linecap: round; } /* tx-3: まだ描かれていない続き */
+  .paper    { fill: var(--bg); }                             /* bg: ゲートの中を塗りつぶす */
+  .wax      { fill: var(--blue-600); }                       /* blue-600 */
+  .wax-core { fill: var(--blue-200); }                       /* blue-200: 折れた芯の断面 */
+  .wax-worn { fill: var(--blue-400); }                       /* blue-400: すり減った先端の面 */
+  .wax-end  { fill: var(--blue-400); }                       /* blue-400: 平らな尻 */
+  .wax-hi   { fill: none; stroke: var(--bg); stroke-width: 4; stroke-linecap: round; opacity: .35; } /* bg: 円柱のつや */
+  .wax-shade { fill: none; stroke: var(--tx); stroke-width: 6; stroke-linecap: round; opacity: .15; } /* tx: 円柱の影 */
+  .wrapper  { fill: var(--blue-400); }                       /* blue-400: 紙の巻紙 */
+  .wrap-ink { fill: none; stroke: var(--tx); stroke-width: 1.5; stroke-linecap: round; } /* tx: 巻紙の帯と文字 */
+  .wrap-fray { fill: none; stroke: var(--blue-400); stroke-width: 1.5; stroke-linecap: round; } /* ほつれた紙 */
+  .grain    { fill: var(--blue-600); }                       /* 断面のワックス粒 */
+  .grain.lt { fill: var(--bg); }
+  .crumb    { fill: var(--blue-600); }
+
+  /* 描かれていく最後の線 (pathLength=100)。基準は描き終えた状態で、動きは下の script で付ける */
+  .draw { stroke-dasharray: 100; stroke-dashoffset: 0; }
+
+  /* クレヨン: 基準の transform が最終位置 (折れたあと)。先端は線の終点 (648, 153) に置く */
+  .tip, .rest, .impact { transform-box: view-box; transform-origin: 0 0; }
+  .tip  { transform: translate(648px, 153px) rotate(-30deg); }
+  .rest { transform: translate(742px, 214px) rotate(18deg); }
+  /* 折れ口 (断面・粒・ほつれ) は折れた瞬間に現れる */
+  .broken { animation: appear var(--snap) .3s both; }
+  @keyframes appear { 0%, 61% { opacity: 0; } 63%, 100% { opacity: 1; } }
+  /* 折れる前は継ぎ目をワックスでふさいで 1 本に見せる */
+  .whole { opacity: 0; animation: vanish var(--snap) .3s both; }
+  @keyframes vanish { 0%, 61% { opacity: 1; } 63%, 100% { opacity: 0; } }
+  /* 芯のかけらが飛び散る */
+  /* ワックスのかけら (控えめな細部): 机の上の紙を真上から見ているので、重力は画面の奥向き。
+     かけらは折れ口から放射状に少しだけ滑り、摩擦ですぐ止まる。上下の放物線や跳ねはなし。
+     k1〜k4 は先端側の折れ口 (709, 115) から、k5〜k7 は転がった側の折れ口から */
+  .crumb {
+    transform-box: fill-box; transform-origin: center;
+    animation: crumb var(--dur) cubic-bezier(.1, .7, .3, 1) calc(var(--snap) * .62 + .3s + var(--lag)) both;
+  }
+  /* --sx, --sy: 出発点 (= 折れ口 − 着地点) / --r: 滑る間の小さな回転 / --dur, --lag: 長さと出遅れ */
+  .k1 { --sx: -17px; --sy: -23px; --r: 25deg;  --dur: .34s; --lag: 0s; }
+  .k2 { --sx: -25px; --sy: 12px;  --r: -40deg; --dur: .42s; --lag: .02s; }
+  .k3 { --sx: -5px;  --sy: -35px; --r: 15deg;  --dur: .3s;  --lag: .01s; }
+  .k4 { --sx: 11px;  --sy: 24px;  --r: -30deg; --dur: .46s; --lag: .03s; }
+  /* 右側の片の折れ口から: 転がって紙に当たった瞬間 (折れて 0.25 秒後、折れ口は (752, 196)) にこぼれる */
+  .k5 { --sx: 34px;  --sy: -14px; --r: 20deg;  --dur: .36s; --lag: .25s; }
+  .k6 { --sx: 24px;  --sy: 2px;   --r: -25deg; --dur: .3s;  --lag: .26s; }
+  .k7 { --sx: 20px;  --sy: -40px; --r: 35deg;  --dur: .4s;  --lag: .27s; }
+  @keyframes crumb {
+    0%   { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(0); }
+    20%  { opacity: 1; }
+    100% { opacity: 1; transform: translate(0, 0) rotate(var(--r)); }
+  }
+  .impact { transform-origin: 709px 115px; animation: impact var(--snap) .3s both; }
+  @keyframes impact {
+    0%, 62% { opacity: 0; transform: scale(.3); }
+    72% { opacity: 1; transform: scale(1.15); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ---- 文字 ---- */
+  .copy { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .copy > * { animation: rise .6s cubic-bezier(.2, .7, .2, 1) both; }
+  .copy > :nth-child(2) { animation-delay: .1s; }
+  .copy > :nth-child(3) { animation-delay: .2s; }
+  .copy > :nth-child(4) { animation-delay: .3s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } } /* spacing-3 */
+  h1 {
+    margin: 0;
+    font-size: 60px; line-height: 60px;  /* text-6xl */
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+  .lead { margin: 12px 0 0; max-width: 32em; text-wrap: balance; color: var(--tx-2); font-size: 18px; line-height: 28px; } /* spacing-3 / text-lg */
+  .step {
+    margin: 24px 0 0;                    /* spacing-6 */
+    display: inline-flex; align-items: center; gap: 12px; /* spacing-3 */
+    font-size: 20px; line-height: 28px;  /* text-xl */
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .step svg { width: 40px; height: 24px; flex: none; } /* spacing-10 / spacing-6: クレヨンの矢印 */
+  .step .arrow { fill: none; stroke: var(--orange-400); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; } /* orange-400 */
+
+  .more {
+    margin-top: 20px;                    /* spacing-5 */
+    display: flex; flex-direction: column; align-items: center; /* 縦積み: 開いても横にずれない */
+    gap: 8px;                            /* spacing-2 */
+    font-size: 14px; line-height: 20px;  /* text-sm */
+  }
+  .link {
+    font: inherit;
+    padding: 0; border: 0; background: none;
+    color: var(--tx-2);
+    text-decoration: underline; text-decoration-color: var(--ui-3); text-underline-offset: 4px; /* spacing-1 */
+    cursor: pointer;
+    border-radius: 2px;                  /* rounded-sm */
+  }
+  .link:hover { color: var(--purple-600); text-decoration-color: currentColor; }
+  details { position: relative; }
+  details summary { width: fit-content; cursor: pointer; color: var(--tx-2); border-radius: 2px; } /* rounded-sm */
+  /* 原エラーは真下の空き領域に出す (下には何もないので重ならず、ページ全体も動かない) */
+  details .raw {
+    position: absolute; left: 50%; top: calc(100% + 8px); /* spacing-2 */
+    transform: translateX(-50%);
+    width: max-content; max-width: calc(100vw - 32px); /* spacing-4 x 2 */
+    margin: 0;
+    padding: 8px 12px;                   /* spacing-2 / spacing-3 */
+    background: var(--bg-2);
+    border: 1px solid var(--ui-2);
+    border-radius: 8px;                  /* rounded-lg */
+    font: 12px/16px 'Qni Geist Mono', monospace; /* text-xs */
+    color: var(--tx-2);
+    text-align: left;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---- Linux Chromium の手順: 中央モーダル ---- */
+  dialog {
+    font-family: 'Qni Geist', sans-serif;
+    width: min(640px, calc(100vw - 32px)); /* spacing-4 x 2 */
+    max-height: calc(100dvh - 32px);
+    padding: 0; border: 0;
+    border-radius: 16px;                 /* rounded-2xl */
+    background: var(--bg);
+    color: var(--tx);
+    box-shadow: 0 24px 48px rgb(16 15 15 / .18); /* tx の影 */
+  }
+  dialog[open] { animation: pop .25s cubic-bezier(.2, .8, .2, 1); }
+  dialog::backdrop { background: rgb(16 15 15 / .4); } /* tx 40% */
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } } /* spacing-2 */
+  .sheet { padding: 24px; }              /* spacing-6 */
+  .sheet-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; } /* spacing-4 */
+  .sheet h2 { margin: 0; font-size: 20px; line-height: 28px; } /* text-xl */
+  .sheet p, .sheet li { font-size: 14px; line-height: 20px; } /* text-sm */
+  .sheet p { margin: 12px 0 0; color: var(--tx-2); } /* spacing-3 */
+  .sheet ol { margin: 16px 0 0; padding-left: 20px; } /* spacing-4 / spacing-5 */
+  .sheet ol > li + li { margin-top: 16px; } /* spacing-4: 手順どうしも注意書きとの間隔と揃える */
+  .caution {
+    margin: 16px 0 0;                    /* spacing-4 */
+    padding: 12px 16px 12px 36px;        /* spacing-3 / spacing-4 / spacing-9 */
+    background: var(--purple-50);
+    border-radius: 8px;                  /* rounded-lg */
+  }
+  .caution li + li { margin-top: 4px; }  /* spacing-1 */
+  /* 番号付き手順の字下げを打ち消し、コマンド枠・注意書き・本文の左右端を揃える。 */
+  .codehead { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 8px -20px; width: calc(100% + 20px); color: var(--tx-2); } /* spacing-2 / spacing-5 */
+  .btn {
+    flex-shrink: 0; white-space: nowrap;
+    font: inherit;
+    font-size: 12px; line-height: 16px;  /* text-xs */
+    font-weight: 600;
+    padding: 4px 12px;                   /* spacing-1 / spacing-3 */
+    border-radius: 9999px;               /* rounded-full */
+    border: 1px solid var(--ui-3);
+    background: var(--bg);
+    color: var(--tx);
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--ui); }
+  pre.cmd {
+    margin: 0 0 0 -20px; /* spacing-5: 番号付き手順の字下げを打ち消す */
+    width: calc(100% + 20px);
+    padding: 16px;                       /* spacing-4 */
+    background: var(--bg-2);
+    border: 1px solid var(--ui);
+    border-radius: 8px;                  /* rounded-lg */
+    white-space: pre-wrap;               /* スマホでも全文を読めるよう <wbr> の位置で折り返す。コピーは原文のまま */
+    font: 12px/16px 'Qni Geist Mono', monospace; /* text-xs */
+  }
+  code { font-family: 'Qni Geist Mono', monospace; }
+
+  /* ---- スマホ: 絵を拡大して折れた場所の周辺だけを切り取る ---- */
+  @media (max-width: 767px) {
+    .stage { gap: 16px; padding: 32px 16px; } /* spacing-4 / spacing-8 / spacing-4 */
+    .art { width: 100%; overflow: hidden; }
+    .art svg { width: 160%; margin-left: -48%; } /* viewBox の x≈360〜1110 を見せる */
+    h1 { font-size: 36px; line-height: 40px; } /* text-4xl */
+    .lead { font-size: 16px; line-height: 24px; } /* text-base */
+    .step { font-size: 18px; line-height: 28px; text-align: left; } /* text-lg */
+    .step svg { width: 32px; }           /* spacing-8 */
+    .sheet { padding: 20px; }            /* spacing-5 */
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after, dialog[open] { animation: none !important; transition: none !important; }
+  }

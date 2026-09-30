@@ -3,6 +3,7 @@ import {
   pixelRgbDistance,
   sampleCanvasPixels,
   waitForStartupReady,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -41,18 +42,18 @@ const canvasBox = async (page: Page) => {
   }
   return box!
 }
-
 const openAspectDropdown = async (page: Page): Promise<AspectGeometry> => {
   const box = await canvasBox(page)
   // Default state panel is bottom-centred in the 1000×800 Playwright viewport;
   // this point lands on the right-aligned "2 × 1 = 2 states ▾" trigger text.
   await page.mouse.click(box.x + ASPECT_TRIGGER.x, box.y + ASPECT_TRIGGER.y)
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const geometry = await readAspectGeometry(page)
-    if (geometry) return geometry
-    await page.waitForTimeout(50)
-  }
-  throw new Error('aspect dropdown geometry was not published')
+  const geometry = await waitForValue(
+    () => readAspectGeometry(page),
+    (value) => value !== null,
+    'aspect dropdown geometry was not published',
+  )
+  if (!geometry) throw new Error('aspect dropdown geometry missing')
+  return geometry
 }
 
 const centerY = (rect: RectJson): number => (rect.top + rect.bottom) / 2

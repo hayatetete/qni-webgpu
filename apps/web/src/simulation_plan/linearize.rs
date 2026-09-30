@@ -7,7 +7,7 @@
 //! - `packages/simulator/src/state-vector.ts` and `matrix.ts` — the math each
 //!   shader implements (kept in `gpu/*`).
 
-use super::{ColumnAnalysis, SimulationOp};
+use super::{SimulationColumnAnalysis, SimulationOp};
 use crate::app::PlacedGate;
 use crate::gates::{
     gate_params, gate_params_controlled, phase_params, rx_params, ry_params, rz_params,
@@ -36,12 +36,7 @@ pub(crate) fn linearize_ops(
         .local_state_count_u32()
         .expect("linearize runs only on the local dispatch path within local capacity");
 
-    let analysis = ColumnAnalysis::from_gates(placed_gates, |gate| {
-        if !gate.wire.is_within(qubits) {
-            return None;
-        }
-        Some(gate.column.as_usize())
-    });
+    let analysis = SimulationColumnAnalysis::from_gates(placed_gates, qubits);
 
     let mut ops: Vec<SimulationOp> = Vec::new();
     let mut next_snapshot_slot = 0usize;
@@ -58,7 +53,7 @@ pub(crate) fn linearize_ops(
             next_snapshot_slot += 1;
         }
         let column_gates = column.gates();
-        let mut controls = ColumnControls::NONE;
+        let controls = column.controls();
         let mut targets: Vec<&PlacedGate> = Vec::new();
         let mut bloch_targets: Vec<&PlacedGate> = Vec::new();
         let mut measurement_targets: Vec<&PlacedGate> = Vec::new();
@@ -69,13 +64,8 @@ pub(crate) fn linearize_ops(
 
         let mut qft_gates: Vec<&PlacedGate> = Vec::new();
         for gate in column_gates {
-            let bit = gate
-                .wire
-                .to_qubit_bit(qubits)
-                .expect("column gates are filtered to wires within the register");
             match gate.kind {
-                GateKind::Control => controls.add_control(bit),
-                GateKind::AntiControl => controls.add_anti_control(bit),
+                GateKind::Control | GateKind::AntiControl => {}
                 GateKind::Swap => swap_targets.push(gate),
                 GateKind::Spacer => {
                     // Non-mutating decoration.
@@ -98,7 +88,7 @@ pub(crate) fn linearize_ops(
         // no partner, or three+ Swaps in one column, the column is
         // skipped (qni dispatches only the first two `targets` and
         // disables stray swaps via `updateSwapConnections`).
-        swap_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        swap_targets.sort_by_key(|a| a.id);
         if swap_targets.len() == 2 {
             let bit_a = swap_targets[0]
                 .wire
@@ -111,7 +101,7 @@ pub(crate) fn linearize_ops(
             push_swap_3cnot(&mut ops, bit_a, bit_b, controls, state_count);
         }
 
-        targets.sort_by(|a, b| a.id.cmp(&b.id));
+        targets.sort_by_key(|a| a.id);
         for target in &targets {
             let bit = target
                 .wire
@@ -189,7 +179,7 @@ pub(crate) fn linearize_ops(
         // controlled-phase rotations). Column controls are threaded through
         // every decomposed operation, making the whole QFT conditional while
         // preserving the usual internal QFT controlled-phase gates.
-        qft_gates.sort_by(|a, b| a.id.cmp(&b.id));
+        qft_gates.sort_by_key(|a| a.id);
         for qft in &qft_gates {
             let dagger = qft.kind == GateKind::QftDaggerGate;
             let qft_controls = qft_external_controls(qft, qubits, controls);
@@ -204,7 +194,7 @@ pub(crate) fn linearize_ops(
 
         // Measurements run after the column's unitaries: reduce + sample,
         // then collapse. Each consumes one aux slot.
-        measurement_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        measurement_targets.sort_by_key(|a| a.id);
         for measurement in &measurement_targets {
             let qubit_bit = measurement
                 .wire
@@ -223,7 +213,7 @@ pub(crate) fn linearize_ops(
         }
 
         // Bloch captures see the post-measurement state.
-        bloch_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        bloch_targets.sort_by_key(|a| a.id);
         for display in &bloch_targets {
             let qubit_bit = display
                 .wire
@@ -240,7 +230,7 @@ pub(crate) fn linearize_ops(
         // Probability displays are also read-only displays. They capture the
         // current GPU state into a per-display probability buffer; rendering
         // samples that buffer directly, no CPU-side probabilities.
-        probability_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        probability_targets.sort_by_key(|a| a.id);
         for display in &probability_targets {
             if !display.wire.is_within(qubits) {
                 continue;
@@ -263,7 +253,7 @@ pub(crate) fn linearize_ops(
             });
         }
 
-        amplitude_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        amplitude_targets.sort_by_key(|a| a.id);
         for display in &amplitude_targets {
             if !display.wire.is_within(qubits) {
                 continue;
@@ -286,7 +276,7 @@ pub(crate) fn linearize_ops(
             });
         }
 
-        density_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        density_targets.sort_by_key(|a| a.id);
         for display in &density_targets {
             if !display.wire.is_within(qubits) {
                 continue;
@@ -1060,6 +1050,66 @@ mod tests {
         assert!(matches!(
             ops.first(),
             Some(SimulationOp::CaptureProbability { base_bit, .. }) if base_bit.as_u32() == 0
+        ));
+    }
+
+    #[test]
+    fn amplitude_display_captures_column_controls() {
+        let gates = [
+            PlacedGate::new(
+                crate::app::GateId::from_u32(1),
+                GateKind::Control,
+                crate::app::CircuitColumnIndex::new(0),
+                crate::app::WireIndex::new(0),
+                crate::gates::GateSpan::SINGLE,
+                None,
+            ),
+            PlacedGate::new(
+                crate::app::GateId::from_u32(2),
+                GateKind::AmplitudeDisplay,
+                crate::app::CircuitColumnIndex::new(0),
+                crate::app::WireIndex::new(1),
+                crate::gates::GateSpan::SINGLE,
+                None,
+            ),
+        ];
+
+        let ops = linearize_ops(&gates, qubit_count(2), 0);
+
+        assert!(matches!(
+            ops.first(),
+            Some(SimulationOp::CaptureAmplitude { controls, .. })
+                if controls.mask() == 0b1 && controls.value() == 0b1
+        ));
+    }
+
+    #[test]
+    fn density_display_captures_column_controls() {
+        let gates = [
+            PlacedGate::new(
+                crate::app::GateId::from_u32(1),
+                GateKind::AntiControl,
+                crate::app::CircuitColumnIndex::new(0),
+                crate::app::WireIndex::new(0),
+                crate::gates::GateSpan::SINGLE,
+                None,
+            ),
+            PlacedGate::new(
+                crate::app::GateId::from_u32(2),
+                GateKind::DensityMatrixDisplay,
+                crate::app::CircuitColumnIndex::new(0),
+                crate::app::WireIndex::new(1),
+                crate::gates::GateSpan::SINGLE,
+                None,
+            ),
+        ];
+
+        let ops = linearize_ops(&gates, qubit_count(2), 0);
+
+        assert!(matches!(
+            ops.first(),
+            Some(SimulationOp::CaptureDensity { controls, .. })
+                if controls.mask() == 0b1 && controls.value() == 0
         ));
     }
 

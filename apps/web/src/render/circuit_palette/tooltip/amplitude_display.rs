@@ -30,7 +30,7 @@ pub(super) fn draw_tooltip_amps(
         } else {
             colors.state_outline
         };
-        painter.circle_stroke(center, CIRCLE / 2.0, egui::Stroke::new(1.5, outline));
+        painter.circle_stroke(center, CIRCLE / 2.0, egui::Stroke::new(1.5_f32, outline));
         if !is_zero {
             let inner_r = (CIRCLE / 2.0) * prob.sqrt();
             painter.circle_filled(center, inner_r, colors.state_fill);
@@ -39,7 +39,10 @@ pub(super) fn draw_tooltip_amps(
                 center.x + phase.sin() * (CIRCLE / 2.0),
                 center.y - phase.cos() * (CIRCLE / 2.0),
             );
-            painter.line_segment([center, tip], egui::Stroke::new(2.0, colors.state_needle));
+            painter.line_segment(
+                [center, tip],
+                egui::Stroke::new(2.0_f32, colors.state_needle),
+            );
         }
         // Basis label `|0⟩` / `|1⟩` tucked tight against the circle's
         // bottom-right edge (qni convention). The anchor is the label's

@@ -859,7 +859,10 @@ mod tests {
         let slot1 = layout.slots[0][1];
         handle_mouse_down(&mut state, slot0.x, slot0.y, area);
         handle_mouse_up(&mut state, slot1.x, slot1.y, area);
-        assert_eq!(state.placed[0].get(0).and_then(|gate| *gate), Some(Gate::H));
+        assert_eq!(
+            state.placed[0].first().and_then(|gate| *gate),
+            Some(Gate::H)
+        );
     }
 
     #[test]
@@ -879,7 +882,7 @@ mod tests {
         handle_mouse_up(&mut state, gap_x, gap_y, area);
         assert_eq!(
             (
-                state.placed[0].get(0).and_then(|gate| *gate),
+                state.placed[0].first().and_then(|gate| *gate),
                 state.placed[0].get(1).and_then(|gate| *gate),
                 state.placed[0].get(2).and_then(|gate| *gate),
             ),
@@ -903,7 +906,7 @@ mod tests {
         handle_mouse_up(&mut state, gap_x, gap_y, area);
         assert_eq!(
             (
-                state.placed[0].get(0).and_then(|gate| *gate),
+                state.placed[0].first().and_then(|gate| *gate),
                 state.placed[0].get(1).and_then(|gate| *gate),
                 state.placed[0].get(2).and_then(|gate| *gate),
             ),

@@ -32,6 +32,14 @@ pub(crate) const QNI_TOOLBAR_LOCK_GEOMETRY_JSON: &str = "__qniToolbarLockGeometr
 pub(crate) const QNI_TOOLBAR_SHORTCUT_GEOMETRY_JSON: &str = "__qniToolbarShortcutGeometryJson";
 pub(crate) const QNI_TOOLBAR_TOOLTIP_TEXT: &str = "__qniToolbarTooltipText";
 
+/// 起動完了フラグ。最初のフレームを描画した時点で立てる。
+/// `bootstrap.ts` の `start()` 呼び出し直後に立てると、eframe が canvas の
+/// イベントリスナを張る前にテストがクリックしてしまい入力が失われる。
+pub(crate) const QNI_EGUI_READY: &str = "__eguiReady";
+
+/// 起動の進行段階。起動が固まったときに、どこで止まったかを切り分けるために publish する。
+pub(crate) const QNI_STARTUP_STAGE: &str = "__qniStartupStage";
+
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn set_property(target: &JsValue, name: &str, value: &JsValue) {
     let _ = js_sys::Reflect::set(target, &JsValue::from_str(name), value);
@@ -44,3 +52,28 @@ pub(crate) fn set_window_value(name: &str, value: &JsValue) {
     };
     set_property(window.as_ref(), name, value);
 }
+
+/// 最初のフレーム描画後に一度だけ起動完了フラグを立てる。
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn mark_egui_ready() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static PUBLISHED: AtomicBool = AtomicBool::new(false);
+    if PUBLISHED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    set_window_value(QNI_EGUI_READY, &JsValue::TRUE);
+    set_startup_stage("first-frame");
+}
+
+/// 起動の進行段階を publish する。値は `runner-start` / `app-new` / `first-frame`。
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn set_startup_stage(stage: &str) {
+    set_window_value(QNI_STARTUP_STAGE, &JsValue::from_str(stage));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_startup_stage(_stage: &str) {}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn mark_egui_ready() {}

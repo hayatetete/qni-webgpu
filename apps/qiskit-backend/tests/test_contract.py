@@ -1,6 +1,12 @@
+import importlib.util
 import json
 import math
+import os
+import socket
+import subprocess
+import sys
 import threading
+import time
 import unittest
 from contextlib import contextmanager
 import urllib.error
@@ -26,6 +32,7 @@ from qni_qiskit_backend.runners import (
     bloch_save_qargs,
     density_qargs,
     density_save_qargs,
+    load_qiskit,
     normalize_qiskit_counts,
     probability_qargs,
     probability_save_qargs,
@@ -46,6 +53,44 @@ def running_test_server(default_runner, allowed_runners, proxy_token=""):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@contextmanager
+def server_subprocess(runner):
+    # 読み込み状態はプロセス単位なので、別プロセスでサーバを立てる。
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+    env = {**os.environ, "PYTHONPATH": src_dir, "PYTHONUNBUFFERED": "1"}
+    process = subprocess.Popen(
+        [
+            sys.executable, "-m", "qni_qiskit_backend",
+            "--port", str(port),
+            "--runner", runner,
+            "--allowed-runners", runner,
+        ],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen(f"{base_url}/health", timeout=2):
+                    break
+            except OSError:
+                if process.poll() is not None:
+                    raise RuntimeError(f"server exited early: {process.returncode}")
+                time.sleep(0.25)
+        else:
+            raise RuntimeError("timed out waiting for the backend subprocess")
+        yield base_url
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
 
 
 class QubitCountTests(unittest.TestCase):
@@ -1769,6 +1814,33 @@ class ContractTests(unittest.TestCase):
                 status = exc.code
                 exc.close()
         self.assertEqual(status, 400)
+
+    def test_server_survives_repeated_qiskit_runs_in_worker_threads(self):
+        # qiskit の初回読み込みをワーカースレッドで行うと、次のシミュレーションが
+        # SIGSEGV でプロセスごと落ちる (qiskit 2.5.2 + qiskit-aer 0.17.2 +
+        # numpy 2.4.6 で再現)。読み込み状態は プロセス単位なので、別プロセスの
+        # サーバへ 2 回続けて実行を投げて確かめる。
+        if importlib.util.find_spec("qiskit_aer") is None:
+            self.skipTest("qiskit-aer is not installed")
+        payload = json.dumps(
+            {"qubits": 2, "columns": [["H", 1]], "shots": 64, "outputs": {"histogram": True}}
+        ).encode("utf-8")
+        with server_subprocess("qiskit-cpu-dev") as base_url:
+            statuses = []
+            for _ in range(2):
+                request = urllib.request.Request(
+                    f"{base_url}/run",
+                    data=payload,
+                    method="POST",
+                    headers={"content-type": "application/json"},
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=30) as response:
+                        statuses.append(response.status)
+                except OSError as exc:
+                    statuses.append(f"failed: {exc}")
+
+        self.assertEqual(statuses, [200, 200])
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ impl QniApp {
                 egui::Frame::popup(&ctx.style())
                     .inner_margin(egui::Margin::symmetric(8, 6))
                     .fill(colors.fps_hud_bg)
-                    .stroke(egui::Stroke::new(1.0, colors.fps_hud_border)),
+                    .stroke(egui::Stroke::new(1.0_f32, colors.fps_hud_border)),
             )
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
@@ -66,11 +66,11 @@ impl QniApp {
                 let axis_color = colors.fps_axis;
                 painter.line_segment(
                     [graph_rect.left_top(), graph_rect.left_bottom()],
-                    egui::Stroke::new(1.0, axis_color),
+                    egui::Stroke::new(1.0_f32, axis_color),
                 );
                 painter.line_segment(
                     [graph_rect.left_bottom(), graph_rect.right_bottom()],
-                    egui::Stroke::new(1.0, axis_color),
+                    egui::Stroke::new(1.0_f32, axis_color),
                 );
                 // Y-axis ceiling: round up to next 30 fps step, clamped
                 // to [60, 150] so a single startup spike (sub-ms first
@@ -101,7 +101,7 @@ impl QniApp {
                         .collect();
                     painter.add(egui::Shape::line(
                         points,
-                        egui::Stroke::new(1.5, colors.fps_plot),
+                        egui::Stroke::new(1.5_f32, colors.fps_plot),
                     ));
                 }
                 // Y-axis labels.

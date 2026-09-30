@@ -9,7 +9,7 @@ from typing import Any
 
 from .circuit import CircuitBuildError
 from .contract import RUNNERS, ContractError, parse_run_request
-from .runners import RunnerUnavailable, select_runner
+from .runners import RunnerUnavailable, load_qiskit, select_runner
 
 
 class QiskitBackendHandler(BaseHTTPRequestHandler):
@@ -129,6 +129,15 @@ def make_server(
 ) -> QiskitBackendServer:
     if default_runner not in allowed_runners:
         raise ValueError("default runner must be one of the allowed runners")
+    # qiskit の初回読み込みはワーカースレッドで行うと次のシミュレーションが
+    # SIGSEGV で落ちる。リクエストを受ける前に main スレッドで済ませておく。
+    # qiskit が入っていない環境ではサーバ自体は起動させ、実行要求の時点で
+    # 従来どおりランナー利用不可のエラーを返す。
+    if any(name.startswith("qiskit-") for name in allowed_runners):
+        try:
+            load_qiskit()
+        except RunnerUnavailable:
+            pass
     server = QiskitBackendServer((host, port), QiskitBackendHandler)
     server.default_runner = default_runner
     server.allowed_runners = allowed_runners

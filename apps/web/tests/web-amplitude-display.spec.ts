@@ -8,6 +8,8 @@ import {
   sampleCanvasPixels,
   UI_CONSTANTS,
   waitForStartupReady,
+  waitForValue,
+  type AmplitudeCell,
 } from './support/web-spec-helpers'
 
 const GATE_SIZE = UI_CONSTANTS.GATE_SIZE
@@ -32,27 +34,27 @@ const amplitudeCircleBackgroundProbeXs = (column: number): number[] =>
 const AMPLITUDE_ZERO_OUTLINE: [number, number, number, number] = [218, 216, 206, 255]
 const circuitHash = (cols: unknown[]): string => encodeURIComponent(JSON.stringify({ cols }))
 const readCircuitColsFromHash = (url: string): unknown[] => JSON.parse(decodeURIComponent(new URL(url).hash.slice(1))).cols
-
 const waitForHashCols = async (page: { url(): string; waitForTimeout(ms: number): Promise<void> }, expected: unknown[]): Promise<void> => {
   const expectedJson = JSON.stringify(expected)
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (JSON.stringify(readCircuitColsFromHash(page.url())) === expectedJson) return
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`URL hash columns did not become ${expectedJson}`)
+  await waitForValue(
+    () => Promise.resolve(JSON.stringify(readCircuitColsFromHash(page.url()))),
+    (seen) => seen === expectedJson,
+    `URL hash columns did not become ${expectedJson}`,
+  )
 }
 
 const waitForAmplitudeCell = async (
   page: Parameters<typeof readAmplitudeCell>[0],
   gateId: number,
   outcome: number,
-) => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const cell = await readAmplitudeCell(page, gateId, outcome)
-    if (cell) return cell
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`Amplitude cell ${gateId}:${outcome} did not become available`)
+): Promise<AmplitudeCell> => {
+  const cell = await waitForValue(
+    () => readAmplitudeCell(page, gateId, outcome),
+    (value) => value !== null,
+    `Amplitude cell ${gateId}:${outcome} did not become available`,
+  )
+  if (!cell) throw new Error(`Amplitude cell ${gateId}:${outcome} is null`)
+  return cell
 }
 
 const sampleUnsnappedAmps1DragPixel = async (

@@ -36,7 +36,9 @@ type DragPreviewProbeOptions = {
 }
 type ArtifactWorld = { artifactDir?: string } | null | undefined
 
-export const DEFAULT_READY_TIMEOUT_MS = 20_000
+// 起動が固まった場合、`bootstrap.ts` の監視が 15 秒後に一度だけ自動で読み込み
+// 直す。その分の余裕を含めた待ち時間にする。
+export const DEFAULT_READY_TIMEOUT_MS = 30_000
 export const DEFAULT_CANVAS_CONTENT_TIMEOUT_MS = 5_000
 export const DEFAULT_ARTIFACT_DIR = path.join(os.tmpdir(), 'qni-web-cucumber')
 const DEFAULT_EVALUATE_ATTEMPTS = 3
@@ -96,7 +98,32 @@ const includesAny = (value: unknown, substrings: readonly string[]): boolean =>
   substrings.some((substring) => String(value).includes(substring))
 
 export const waitForAppReady = async (page: Page, timeout = DEFAULT_READY_TIMEOUT_MS): Promise<void> => {
-  await page.waitForFunction(() => window.__eguiReady === true || Boolean(window.__eguiError), null, { timeout })
+  let onPageError: ((error: Error) => void) | undefined
+  const pageError = new Promise<never>((_, reject) => {
+    onPageError = (error) => reject(error)
+    page.on('pageerror', onPageError)
+  })
+  try {
+    await Promise.race([
+      page.waitForFunction(() => window.__eguiReady === true || Boolean(window.__eguiError), null, { timeout }),
+      pageError,
+    ])
+  } catch (error) {
+    // 起動待ちの失敗は「どの段階で止まったか」が分からないと切り分けできない。
+    // 起動段階フラグとキャンバスの実サイズを添えて投げ直す。
+    const state = await page.evaluate(() => {
+      const canvas = document.getElementById('egui-canvas')
+      return {
+        stage: Reflect.get(window, '__qniStartupStage') ?? 'not-started',
+        ready: window.__eguiReady ?? null,
+        error: window.__eguiError ? String(window.__eguiError).slice(0, 200) : null,
+        canvasSize: canvas instanceof HTMLCanvasElement ? [canvas.width, canvas.height] : null,
+      }
+    })
+    throw new Error(`egui app did not become ready: ${JSON.stringify(state)} :: ${String(error).split('\n')[0]}`)
+  } finally {
+    if (onPageError) page.off('pageerror', onPageError)
+  }
 }
 
 export const evaluateWithRetry = async <Result = unknown, Arg = unknown>(

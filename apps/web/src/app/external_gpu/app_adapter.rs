@@ -401,10 +401,14 @@ impl QniApp {
             .external_execution_qubits()
             .map_err(|_| "qubit count exceeds external GPU capacity (32)".to_owned())?;
         let columns_json = crate::url_circuit::circuit_columns_to_json(&self.placed_gates, qubits);
-        let amplitude_requests = collect_amplitude_requests(&self.placed_gates, qubits);
-        let bloch_requests = collect_bloch_requests(&self.placed_gates, qubits);
-        let probability_requests = collect_probability_requests(&self.placed_gates, qubits);
-        let density_requests = collect_density_requests(&self.placed_gates, qubits);
+        let columns = crate::simulation_plan::SimulationColumnAnalysis::from_gates(
+            &self.placed_gates,
+            qubits,
+        );
+        let amplitude_requests = collect_amplitude_requests(&columns, qubits);
+        let bloch_requests = collect_bloch_requests(&columns);
+        let probability_requests = collect_probability_requests(&columns, qubits);
+        let density_requests = collect_density_requests(&columns, qubits);
         let amplitudes_json = amplitude_requests_json(&amplitude_requests);
         let bloch_json = bloch_requests_json(&bloch_requests);
         let probability_json = probability_requests_json(&probability_requests);

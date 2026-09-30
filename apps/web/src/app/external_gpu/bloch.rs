@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::app::{CircuitColumnIndex, PlacedGate, WireIndex};
+use crate::app::{CircuitColumnIndex, WireIndex};
 use crate::gates::{ColumnControls, GateKind};
 use crate::gpu::{ExternalBlochUpload, ExternalBlochUploadBatch};
-use crate::qubit_count::QubitCount;
+use crate::simulation_plan::SimulationColumnAnalysis;
 
 pub(super) struct ExternalBlochRequest {
     pub(super) gate_id: u32,
@@ -13,41 +13,16 @@ pub(super) struct ExternalBlochRequest {
 }
 
 pub(super) fn collect_bloch_requests(
-    placed_gates: &[PlacedGate],
-    qubits: QubitCount,
+    analysis: &SimulationColumnAnalysis<'_>,
 ) -> Vec<ExternalBlochRequest> {
-    let Some(max_column) = placed_gates.iter().map(|gate| gate.column.as_usize()).max() else {
-        return Vec::new();
-    };
     let mut requests = Vec::new();
-    for column in 0..=max_column {
-        let column_gates: Vec<&PlacedGate> = placed_gates
-            .iter()
-            .filter(|gate| gate.column.as_usize() == column && gate.wire.is_within(qubits))
-            .collect();
-        let mut controls = ColumnControls::NONE;
-        for gate in &column_gates {
-            let bit = gate
-                .wire
-                .to_qubit_bit(qubits)
-                .expect("column gates are filtered to wires within the register");
-            match gate.kind {
-                GateKind::Control => controls.add_control(bit),
-                GateKind::AntiControl => controls.add_anti_control(bit),
-                _ => {}
-            }
-        }
-        let mut displays: Vec<&PlacedGate> = column_gates
-            .into_iter()
-            .filter(|gate| gate.kind == GateKind::BlochDisplay)
-            .collect();
-        displays.sort_by(|a, b| a.id.cmp(&b.id));
-        for display in displays {
+    for column in analysis.columns() {
+        for display in column.displays(GateKind::BlochDisplay) {
             requests.push(ExternalBlochRequest {
                 gate_id: display.id.as_u32(),
-                column: CircuitColumnIndex::new(column),
+                column: CircuitColumnIndex::new(column.slot),
                 wire: display.wire,
-                controls,
+                controls: column.controls(),
             });
         }
     }
@@ -179,9 +154,14 @@ mod tests {
         QubitCount::try_new(value).expect("test qubit count must be non-zero")
     }
 
+    fn requests(gates: &[PlacedGate], qubits: QubitCount) -> Vec<super::ExternalBlochRequest> {
+        let columns = crate::simulation_plan::SimulationColumnAnalysis::from_gates(gates, qubits);
+        collect_bloch_requests(&columns)
+    }
+
     #[test]
     fn serializes_bloch_output_request() {
-        let requests = collect_bloch_requests(
+        let requests = requests(
             &[PlacedGate::new(
                 crate::app::GateId::from_u32(2),
                 GateKind::BlochDisplay,
@@ -201,7 +181,7 @@ mod tests {
 
     #[test]
     fn serializes_bloch_controls() {
-        let requests = collect_bloch_requests(
+        let requests = requests(
             &[
                 PlacedGate::new(
                     crate::app::GateId::from_u32(1),
@@ -239,7 +219,7 @@ mod tests {
 
     #[test]
     fn external_bloch_slot_matches_collection_order() {
-        let requests = collect_bloch_requests(
+        let requests = requests(
             &[
                 PlacedGate::new(
                     crate::app::GateId::from_u32(4),

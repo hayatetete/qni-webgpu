@@ -66,8 +66,12 @@ Web UI の外部 GPU 実行パスを受けるローカル API です。
 主な依存関係:
 
 - `numpy = 1.26.4`
-- `qiskit = 1.2.1`
-- `qiskit-aer = 0.15.1`
+- `qiskit = 2.5.2`
+- `qiskit-aer = 0.17.2`
+- qiskit / qiskit-aer の読み込みは `runners.load_qiskit()` に集約し、サーバ起動時に main スレッドで一度だけ行う。
+  ワーカースレッドで初回の読み込みを行うと、次のシミュレーションが SIGSEGV でプロセスごと落ちる
+  (qiskit 2.5.2 + qiskit-aer 0.17.2 + numpy 2.4.6 で再現。回帰テストは
+  `apps/qiskit-backend/tests/test_contract.py` の `test_server_survives_repeated_qiskit_runs_in_worker_threads`)。
 
 ## 開発・検証ツール
 
@@ -94,7 +98,7 @@ Web UI の外部 GPU 実行パスを受けるローカル API です。
 
 GitHub Actions では以下を使って検証します。
 
-- **Node.js 20**
+- **Node.js 22** (`cucumber.ts` を読み込むために、型注釈を実行時に取り除ける 22.18 以降が必要)
 - **pnpm 9**
 - **Rust stable**
 - **Python 3**

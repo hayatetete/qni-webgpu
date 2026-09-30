@@ -79,9 +79,9 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pluginbase \
     pybind11 \
     PyJWT \
-    'numpy==1.26.4' \
-    'qiskit==1.2.1' && \
-  git clone --depth 1 -b 0.15.1 https://github.com/Qiskit/qiskit-aer.git /tmp/qiskit-aer && \
+    'numpy>=2.0,<3' \
+    'qiskit==2.5.2' && \
+  git clone --depth 1 -b 0.17.2 https://github.com/Qiskit/qiskit-aer.git /tmp/qiskit-aer && \
   cd /tmp/qiskit-aer && \
   python3 ./setup.py bdist_wheel -- \
     -DAER_THRUST_BACKEND=CUDA \

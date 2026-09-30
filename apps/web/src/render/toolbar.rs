@@ -531,7 +531,7 @@ fn paint_toolbar_divider(ui: &mut egui::Ui, colors: &Colors) {
 
 fn paint_icon(painter: &egui::Painter, rect: egui::Rect, icon: ToolbarIcon, color: egui::Color32) {
     let icon_rect = egui::Rect::from_center_size(rect.center(), ICON_SIZE);
-    let stroke = egui::Stroke::new(2.0, color); // Lucide stroke-2 at 18px scale.
+    let stroke = egui::Stroke::new(2.0_f32, color); // Lucide stroke-2 at 18px scale.
     match icon {
         ToolbarIcon::Undo => {
             paint_path(

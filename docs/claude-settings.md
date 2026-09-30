@@ -7,7 +7,7 @@
 Claude Code の設定は複数のレベルで管理されています：
 
 | ファイル | スコープ | 用途 |
-|---------|---------|------|
+| --------- | --------- | ------ |
 | `~/.claude/settings.json` | グローバル | ユーザー全体の設定（プラグイン有効化など） |
 | `.claude/settings.local.json` | プロジェクト | プロジェクト固有の設定（gitignore 推奨） |
 | `.mcp.json` | プロジェクト | MCP サーバー定義（git 共有可能） |
@@ -70,7 +70,7 @@ Playwright MCP の設定ファイル。WebGPU を xvfb 上で動作させるた�
 #### 重要なフラグ
 
 | フラグ | 説明 |
-|--------|------|
+| -------- | ------ |
 | `--ozone-platform=x11` | Wayland 環境でも xvfb の X11 に接続 |
 | `--use-angle=swiftshader` | ソフトウェア WebGPU レンダリング |
 | `--enable-unsafe-webgpu` | WebGPU を有効化 |

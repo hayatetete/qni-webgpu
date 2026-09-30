@@ -21,7 +21,7 @@ impl QniApp {
             rect,
             egui::CornerRadius::same(ITEM_RADIUS),
             colors.surface,
-            egui::Stroke::new(1.5, colors.semantic_on), // Flexoki blue-600.
+            egui::Stroke::new(1.5_f32, colors.semantic_on), // Flexoki blue-600.
             egui::StrokeKind::Outside,
         );
         let (mut draft, select_all) = match &mut self.picker {
@@ -47,7 +47,7 @@ impl QniApp {
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         edit_ui.set_min_size(edit_rect.size());
-        edit_ui.visuals_mut().selection.stroke = egui::Stroke::new(0.0, colors.text_strong); // selected glyphs use Flexoki tx (near-black).
+        edit_ui.visuals_mut().selection.stroke = egui::Stroke::new(0.0_f32, colors.text_strong); // selected glyphs use Flexoki tx (near-black).
         let output = egui::TextEdit::singleline(&mut draft)
             .id(text_id)
             .font(egui::FontId::new(14.0, egui::FontFamily::Proportional)) // text-sm = 14px.

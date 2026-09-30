@@ -13,7 +13,9 @@ const {
   waitForStateVectorReady,
 } = require('../support/egui-helpers.ts') as EguiHelpers
 
-const CUCUMBER_STEP_TIMEOUT_MS = 20_000
+// 起動が固まると `bootstrap.ts` の監視が 15 秒後に一度だけ自動で読み込み直す。
+// その分の余裕を含めた待ち時間にする。
+const CUCUMBER_STEP_TIMEOUT_MS = 30_000
 
 const requirePage = (world: EguiWorld): Page => {
   if (!world.page) {

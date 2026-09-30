@@ -90,7 +90,9 @@ fn read_png_alpha(path: &Path) -> Vec<u8> {
         path.display()
     );
     let alpha = buffer[..info.buffer_size()]
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|rgba| rgba[3])
         .collect::<Vec<_>>();
     assert!(

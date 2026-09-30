@@ -700,6 +700,59 @@ test('Run GPU uploads combined Qiskit display results into GPU buffers', async (
   }).toEqual({ re: 0.6, x: 0.4, p: 0.3 })
 })
 
+test('Run GPU preserves shared column controls across four display kinds', async ({ page }) => {
+  await page.goto(`/#${circuitHash([['•', 'Bloch', 'Probability', 'Amps1', 'Density']])}`)
+  await waitForStartupReady(page, { waitForStateVector: true })
+  await switchToGpuMode(page)
+  await page.evaluate(() => {
+    ;(window as any).__qniRunQiskitBackend = async (payloadJson: string) => {
+      ;(window as any).__qniLastQiskitRequest = JSON.parse(payloadJson)
+      return { status: 'failed', error: 'request captured' }
+    }
+  })
+
+  const box = await page.locator('#egui-canvas').boundingBox()
+  if (!box) throw new Error('expected egui canvas to be measurable')
+  await page.mouse.click(box.x + RUN_GPU_BUTTON_POINT.x, box.y + RUN_GPU_BUTTON_POINT.y)
+  await page.waitForFunction(() => (window as any).__qniLastQiskitRequest !== undefined)
+  const outputs = await page.evaluate(() => (window as any).__qniLastQiskitRequest.outputs)
+
+  expect(Object.fromEntries(
+    ['bloch', 'probability', 'amplitudes', 'densities'].map((kind) => [
+      kind,
+      outputs[kind]?.map(({ control_mask, control_value }: { control_mask: number; control_value: number }) => [control_mask, control_value]),
+    ]),
+  )).toEqual({
+    bloch: [[1, 1]],
+    probability: [[1, 1]],
+    amplitudes: [[1, 1]],
+    densities: [[1, 1]],
+  })
+})
+
+test('Run GPU keeps display controls attached to their own columns', async ({ page }) => {
+  await page.goto(`/#${circuitHash([['•', 'Probability'], ['◦', 'Probability']])}`)
+  await waitForStartupReady(page, { waitForStateVector: true })
+  await switchToGpuMode(page)
+  await page.evaluate(() => {
+    ;(window as any).__qniRunQiskitBackend = async (payloadJson: string) => {
+      ;(window as any).__qniLastQiskitRequest = JSON.parse(payloadJson)
+      return { status: 'failed', error: 'request captured' }
+    }
+  })
+
+  const box = await page.locator('#egui-canvas').boundingBox()
+  if (!box) throw new Error('expected egui canvas to be measurable')
+  await page.mouse.click(box.x + RUN_GPU_BUTTON_POINT.x, box.y + RUN_GPU_BUTTON_POINT.y)
+  await page.waitForFunction(() => (window as any).__qniLastQiskitRequest !== undefined)
+  const requests = await page.evaluate(() => (window as any).__qniLastQiskitRequest.outputs.probability)
+
+  expect(requests.map(({ column, control_mask, control_value }: { column: number; control_mask: number; control_value: number }) => [column, control_mask, control_value])).toEqual([
+    [0, 1, 1],
+    [1, 1, 0],
+  ])
+})
+
 test('Run GPU sends Bloch display controls to the Qiskit backend', async ({ page }) => {
   await page.goto(`/#${circuitHash([['•', 'Bloch']])}`)
   await waitForStartupReady(page, { waitForStateVector: true })

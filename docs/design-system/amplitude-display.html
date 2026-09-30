@@ -790,7 +790,7 @@ fn fs_popup(@location(0) uv: vec2&lt;f32&gt;) -&gt; @location(0) vec4&lt;f32&gt;
       <p class="critique-body">
         改善案: Playwright で本仕様ページ (<code>docs/design-system/amplitude-display.html</code>) 自体を開き、
         モックの canvas をピクセル単位で読んで「指定 cell に <code>blue-200</code> (#92BFDB) が描かれている」「placeholder セルに <code>purple-100</code> (#ECE1F3) が描かれている」を assert するテストを追加する。
-        これは本仕様ページのモックが design-system.css / state.rs / amplitude-display.html の 3 者で一貫していることを継続的に検証する仕組みになる。
+        これは本仕様ページのモックが design-system.css / amplitude_render.wgsl / amplitude-display.html の 3 者で一貫していることを継続的に検証する仕組みになる。
         AGENTS.md にも「デザインを修正したあとは必ず Playwright で実際の見た目を確認する」とあるので、自動化された Playwright assertion で「視覚仕様」の回帰を検出するのは整合的。
       </p>
       <div class="critique-title" style="margin-top: 12px;">「1 ケース 1 アサーション」規約に対して visual snapshot 4 枚は過剰圧縮</div>

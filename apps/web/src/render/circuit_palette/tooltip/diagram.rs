@@ -114,7 +114,7 @@ fn draw_connector_and_gate(
             egui::pos2(x, row_center_y),
             egui::pos2(x + WIRE - WIRE_GATE_PAD, row_center_y),
         ],
-        egui::Stroke::new(2.0, wire_color),
+        egui::Stroke::new(2.0_f32, wire_color),
     );
 
     let gate_x = x + WIRE;
@@ -133,7 +133,7 @@ fn draw_connector_and_gate(
             egui::pos2(wire2_x + WIRE_GATE_PAD, row_center_y),
             egui::pos2(arrow_tip.x - ARROWHEAD + 1.0, row_center_y),
         ],
-        egui::Stroke::new(2.0, wire_color),
+        egui::Stroke::new(2.0_f32, wire_color),
     );
     let arrow_base_x = arrow_tip.x - ARROWHEAD;
     painter.add(egui::Shape::convex_polygon(

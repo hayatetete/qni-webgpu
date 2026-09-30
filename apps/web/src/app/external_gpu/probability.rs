@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
-use crate::app::{CircuitColumnIndex, PlacedGate};
+use crate::app::CircuitColumnIndex;
 use crate::gates::{ColumnControls, GateKind};
 use crate::gpu::{
     ExternalProbabilityUpload, ExternalProbabilityUploadBatch, ProbabilityDistribution,
 };
 use crate::qubit_bit::QubitBit;
 use crate::qubit_count::QubitCount;
+use crate::simulation_plan::SimulationColumnAnalysis;
 
 pub(super) struct ExternalProbabilityRequest {
     pub(super) gate_id: u32,
@@ -17,37 +18,13 @@ pub(super) struct ExternalProbabilityRequest {
 }
 
 pub(super) fn collect_probability_requests(
-    placed_gates: &[PlacedGate],
+    analysis: &SimulationColumnAnalysis<'_>,
     qubits: QubitCount,
 ) -> Vec<ExternalProbabilityRequest> {
     let n = qubits.get();
-    let Some(max_column) = placed_gates.iter().map(|gate| gate.column.as_usize()).max() else {
-        return Vec::new();
-    };
     let mut requests = Vec::new();
-    for column in 0..=max_column {
-        let column_gates: Vec<&PlacedGate> = placed_gates
-            .iter()
-            .filter(|gate| gate.column.as_usize() == column && gate.wire.is_within(qubits))
-            .collect();
-        let mut controls = ColumnControls::NONE;
-        for gate in &column_gates {
-            let bit = gate
-                .wire
-                .to_qubit_bit(qubits)
-                .expect("column gates are filtered to wires within the register");
-            match gate.kind {
-                GateKind::Control => controls.add_control(bit),
-                GateKind::AntiControl => controls.add_anti_control(bit),
-                _ => {}
-            }
-        }
-        let mut displays: Vec<&PlacedGate> = column_gates
-            .into_iter()
-            .filter(|gate| gate.kind == GateKind::ProbabilityDisplay)
-            .collect();
-        displays.sort_by(|a, b| a.id.cmp(&b.id));
-        for display in displays {
+    for column in analysis.columns() {
+        for display in column.displays(GateKind::ProbabilityDisplay) {
             let span = display
                 .span
                 .clamped_for(display.kind, n - display.wire.as_usize());
@@ -59,10 +36,10 @@ pub(super) fn collect_probability_requests(
                 .expect("display wire is within the register");
             requests.push(ExternalProbabilityRequest {
                 gate_id: display.id.as_u32(),
-                column: CircuitColumnIndex::new(column),
+                column: CircuitColumnIndex::new(column.slot),
                 span: span.get(),
                 base_bit,
-                controls,
+                controls: column.controls(),
             });
         }
     }
@@ -204,9 +181,17 @@ mod tests {
         QubitCount::try_new(value).expect("test qubit count must be non-zero")
     }
 
+    fn requests(
+        gates: &[PlacedGate],
+        qubits: QubitCount,
+    ) -> Vec<super::ExternalProbabilityRequest> {
+        let columns = crate::simulation_plan::SimulationColumnAnalysis::from_gates(gates, qubits);
+        collect_probability_requests(&columns, qubits)
+    }
+
     #[test]
     fn serializes_probability_output_request() {
-        let requests = collect_probability_requests(
+        let requests = requests(
             &[PlacedGate::new(
                 crate::app::GateId::from_u32(2),
                 GateKind::ProbabilityDisplay,
@@ -226,7 +211,7 @@ mod tests {
 
     #[test]
     fn serializes_probability_span_base_bit() {
-        let requests = collect_probability_requests(
+        let requests = requests(
             &[PlacedGate::new(
                 crate::app::GateId::from_u32(2),
                 GateKind::ProbabilityDisplay,
@@ -246,7 +231,7 @@ mod tests {
 
     #[test]
     fn serializes_probability_controls() {
-        let requests = collect_probability_requests(
+        let requests = requests(
             &[
                 PlacedGate::new(
                     crate::app::GateId::from_u32(1),
@@ -284,7 +269,7 @@ mod tests {
 
     #[test]
     fn external_probability_slot_matches_collection_order() {
-        let requests = collect_probability_requests(
+        let requests = requests(
             &[
                 PlacedGate::new(
                     crate::app::GateId::from_u32(4),

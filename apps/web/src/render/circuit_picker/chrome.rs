@@ -12,10 +12,10 @@ use super::constants::{
 
 pub(crate) fn popover_frame(colors: &Colors) -> egui::Frame {
     egui::Frame {
-        inner_margin: egui::Margin::same(6),         // p-1.5 = 6px.
-        fill: colors.surface,                        // Flexoki bg / paper.
-        stroke: egui::Stroke::new(1.0, colors.line), // Flexoki ui-2.
-        corner_radius: egui::CornerRadius::same(12), // rounded-xl = 12px.
+        inner_margin: egui::Margin::same(6),             // p-1.5 = 6px.
+        fill: colors.surface,                            // Flexoki bg / paper.
+        stroke: egui::Stroke::new(1.0_f32, colors.line), // Flexoki ui-2.
+        corner_radius: egui::CornerRadius::same(12),     // rounded-xl = 12px.
         outer_margin: egui::Margin::ZERO,
         shadow: egui::epaint::Shadow {
             offset: [0, 12],
@@ -67,6 +67,7 @@ pub(super) fn publish_picker_resize_geometry_json(
     scroll_offset_y: f32,
     hovered: bool,
     dragging: bool,
+    item_dragging: bool,
 ) {
     let first_row_top = first_row_rect
         .map(|rect| rect.top())
@@ -75,7 +76,7 @@ pub(super) fn publish_picker_resize_geometry_json(
         .map(|rect| rect.bottom())
         .unwrap_or_else(|| items_rect.bottom());
     let json = format!(
-        "{{\"items_height\":{items_height:.3},\"max_items_height\":{max_items_height:.3},\"items_top\":{:.3},\"items_bottom\":{:.3},\"handle_left\":{:.3},\"handle_right\":{:.3},\"handle_top\":{:.3},\"handle_bottom\":{:.3},\"footer_top\":{:.3},\"footer_bottom\":{:.3},\"first_row_top\":{first_row_top:.3},\"last_row_bottom\":{last_row_bottom:.3},\"scroll_offset_y\":{scroll_offset_y:.3},\"hovered\":{hovered},\"dragging\":{dragging}}}",
+        "{{\"items_height\":{items_height:.3},\"max_items_height\":{max_items_height:.3},\"items_top\":{:.3},\"items_bottom\":{:.3},\"handle_left\":{:.3},\"handle_right\":{:.3},\"handle_top\":{:.3},\"handle_bottom\":{:.3},\"footer_top\":{:.3},\"footer_bottom\":{:.3},\"first_row_top\":{first_row_top:.3},\"last_row_bottom\":{last_row_bottom:.3},\"scroll_offset_y\":{scroll_offset_y:.3},\"hovered\":{hovered},\"dragging\":{dragging},\"item_dragging\":{item_dragging}}}",
         items_rect.top(),
         items_rect.bottom(),
         handle_rect.left(),
@@ -104,6 +105,7 @@ pub(super) fn publish_picker_resize_geometry_json(
     _scroll_offset_y: f32,
     _hovered: bool,
     _dragging: bool,
+    _item_dragging: bool,
 ) {
 }
 
@@ -259,7 +261,7 @@ pub(crate) fn paint_section_header(
             egui::pos2(rect.left() + ITEM_PAD_X, line_y),
             egui::pos2(rect.left() + ITEM_PAD_X + ROW_ICON_SIZE, line_y),
         ],
-        egui::Stroke::new(1.0, colors.line), // Flexoki ui-2.
+        egui::Stroke::new(1.0_f32, colors.line), // Flexoki ui-2.
     );
     ui.painter().galley(text_pos, galley.clone(), color);
     ui.painter().line_segment(
@@ -267,7 +269,7 @@ pub(crate) fn paint_section_header(
             egui::pos2(text_pos.x + galley.size().x + 6.0, line_y),
             egui::pos2(rect.right() - 4.0, line_y),
         ],
-        egui::Stroke::new(1.0, colors.line), // Flexoki ui-2.
+        egui::Stroke::new(1.0_f32, colors.line), // Flexoki ui-2.
     );
     rect
 }
@@ -391,7 +393,7 @@ pub(super) fn paint_divider(ui: &mut egui::Ui, colors: &Colors) {
             egui::pos2(rect.left() + 4.0, rect.center().y),
             egui::pos2(rect.right() - 4.0, rect.center().y),
         ],
-        egui::Stroke::new(1.0, colors.line),
+        egui::Stroke::new(1.0_f32, colors.line),
     );
 }
 
@@ -405,8 +407,8 @@ pub(crate) fn paint_chevron(
     let p0 = center + rotate(egui::vec2(-4.0, -2.0), angle);
     let p1 = center + rotate(egui::vec2(0.0, 2.0), angle);
     let p2 = center + rotate(egui::vec2(4.0, -2.0), angle);
-    painter.line_segment([p0, p1], egui::Stroke::new(1.8, color));
-    painter.line_segment([p1, p2], egui::Stroke::new(1.8, color));
+    painter.line_segment([p0, p1], egui::Stroke::new(1.8_f32, color));
+    painter.line_segment([p1, p2], egui::Stroke::new(1.8_f32, color));
 }
 
 pub(super) fn paint_kebab(painter: &egui::Painter, center: egui::Pos2, color: egui::Color32) {
@@ -416,7 +418,7 @@ pub(super) fn paint_kebab(painter: &egui::Painter, center: egui::Pos2, color: eg
 }
 
 fn paint_plus(painter: &egui::Painter, center: egui::Pos2, color: egui::Color32) {
-    let stroke = egui::Stroke::new(1.8, color);
+    let stroke = egui::Stroke::new(1.8_f32, color);
     painter.line_segment(
         [
             center + egui::vec2(-4.5, 0.0),
@@ -434,7 +436,7 @@ fn paint_plus(painter: &egui::Painter, center: egui::Pos2, color: egui::Color32)
 }
 
 fn paint_row_lock(painter: &egui::Painter, center: egui::Pos2, color: egui::Color32) {
-    let stroke = egui::Stroke::new(1.2, color);
+    let stroke = egui::Stroke::new(1.2_f32, color);
     let body = egui::Rect::from_center_size(center + egui::vec2(0.0, 2.0), egui::vec2(10.0, 8.0));
     painter.rect_stroke(
         body,

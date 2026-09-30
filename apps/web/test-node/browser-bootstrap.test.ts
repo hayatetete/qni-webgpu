@@ -39,7 +39,7 @@ test('browser bootstrap source is TypeScript without a checked-in JavaScript wra
     ),
     indexLoadsGeneratedBootstrap: /href="\.trunk-generated\/bootstrap\.js"/.test(index),
     indexAvoidsCheckedInBootstrapTarget: !/data-target-path="bootstrap\.js"/.test(index),
-    indexUsesModuleScript: /<script type="module" src="bootstrap\.js"><\/script>/.test(index),
+    indexUsesModuleScript: /<script type="module" src="bootstrap\.js"(?:\s[^>]*)?><\/script>/.test(index),
     gitignoreIgnoresGeneratedBootstrap: /apps\/web\/\.trunk-generated\//.test(gitignore),
   }, {
     hasBootstrapTs: true,

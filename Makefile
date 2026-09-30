@@ -18,4 +18,6 @@ audit:
 	cd apps/tui && cargo audit
 
 deny:
-	cd apps/tui && cargo deny check --config ../../deny.toml
+	# --config はバージョンによって置き場所が変わる (cargo-deny 0.20 で root へ移動)。
+	# リポジトリ直下で実行すれば deny.toml を既定で拾うため、--config を渡さない。
+	cargo deny --manifest-path apps/tui/Cargo.toml check

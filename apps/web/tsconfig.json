@@ -9,5 +9,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["bootstrap.ts", "cucumber.ts", "features/**/*.ts", "features/**/*.d.ts", "playwright.config.ts", "scripts/**/*.ts", "test-node/**/*.ts", "tests/**/*.ts", "test-support/**/*.ts"]
+  "include": ["bootstrap.ts", "cucumber.ts", "features/**/*.ts", "features/**/*.d.ts", "playwright.config.ts", "scripts/**/*.ts", "test-node/**/*.ts", "test-gpu/**/*.ts", "tests/**/*.ts", "test-support/**/*.ts"]
 }

@@ -132,8 +132,15 @@ export const ensureSharedWebServer = async (): Promise<ManagedWebServer> => {
     return { ...config, managed: true }
   }
 
+  // 終了しかけのサーバは 1 回目の probe にだけ応答することがある。直前まで
+  // 開発サーバを動かしていた場合に起きやすく、そのまま「起動済み」と判定すると
+  // 最初のシナリオだけが ERR_CONNECTION_REFUSED で落ちる。間隔を置いて
+  // 2 回連続で応答したときだけ、既存のサーバを使う。
   if (await probeServer(config.url)) {
-    return { ...config, managed: false }
+    await delay(POLL_INTERVAL_MS)
+    if (await probeServer(config.url)) {
+      return { ...config, managed: false }
+    }
   }
 
   managedServerProcess = spawn('sh', ['-lc', `exec ${config.command}`], {

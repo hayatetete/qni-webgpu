@@ -90,6 +90,43 @@ const waitUntil = async (
   throw new Error(failureMessage)
 }
 
+// 描画やアニメーションの完了待ちに使う。回数を数える待ち方 (50 回 x 50 ms など) は
+// CPU が飽和すると「進んでいるのに時間切れ」になるため、時間で区切る。
+// 既定は 15 秒。Playwright のテスト上限 (60 秒) より十分短くしてある。
+export const waitForValue = async <Value>(
+  read: () => Promise<Value>,
+  done: (value: Value) => boolean,
+  failureMessage: string,
+  { timeout = 15_000 }: { timeout?: number } = {},
+): Promise<Value> => {
+  const deadline = Date.now() + timeout
+  let last = await read()
+  while (Date.now() <= deadline) {
+    if (done(last)) return last
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    last = await read()
+  }
+  if (done(last)) return last
+  throw new Error(`${failureMessage} (timeout ${timeout} ms)`)
+}
+
+// 「出ないこと」を確かめるテストもあるため、時間切れでも最後に観測した値を返す版。
+// 例: 確率表示のパーセント表記が出ない spec は、待ってから画素数の少なさを見る。
+export const pollForValue = async <Value>(
+  read: () => Promise<Value>,
+  done: (value: Value) => boolean,
+  { timeout = 15_000 }: { timeout?: number } = {},
+): Promise<Value> => {
+  const deadline = Date.now() + timeout
+  let last = await read()
+  while (Date.now() <= deadline) {
+    if (done(last)) return last
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    last = await read()
+  }
+  return last
+}
+
 export const waitForStateVectorLength = async (
   page: Page,
   length: number,

@@ -10,6 +10,6 @@ mod linearize;
 mod op;
 
 pub(crate) use capacity::{validate_simulation_plan_capacity, SimulationPlanLimits};
-pub(crate) use column_analysis::{AnalyzedColumn, ColumnAnalysis};
+pub(crate) use column_analysis::{AnalyzedColumn, ColumnAnalysis, SimulationColumnAnalysis};
 pub(crate) use linearize::linearize_ops;
 pub(crate) use op::SimulationOp;

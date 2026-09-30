@@ -5,9 +5,9 @@ description = "QNI external GPU execution backend for Qiskit Aer"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "numpy==1.26.4",
-  "qiskit==1.2.1",
-  "qiskit-aer==0.15.1",
+  "numpy>=2.0,<3",
+  "qiskit==2.5.2",
+  "qiskit-aer==0.17.2",
 ]
 
 [build-system]

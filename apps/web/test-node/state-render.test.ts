@@ -4,12 +4,9 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 
 const rootDir = path.join(__dirname, '..')
-const shaderPath = path.join(rootDir, 'src', 'gpu', 'shaders', 'state.rs')
+const shaderPath = path.join(rootDir, 'src', 'gpu', 'shaders', 'state_render.wgsl')
 
-const readRenderShader = async () => {
-  const shader = await fs.readFile(shaderPath, 'utf8')
-  return shader.split('pub(in crate::gpu) const STATE_RENDER_SHADER')[1] ?? ''
-}
+const readRenderShader = async () => fs.readFile(shaderPath, 'utf8')
 
 test('State vector circles use display-matched anti-alias width', async () => {
   const renderShader = await readRenderShader()

@@ -1,99 +1,102 @@
+English | [日本語](README.ja.md)
+
 # qni-webgpu
 
-ブラウザ上で動く **WebGPU ベースの量子回路 UI / シミュレーション環境**です。
-Rust + egui で書いた回路エディタを WebAssembly として配信し、状態ベクトルや表示ブロックの計算を WebGPU compute shader 上で行います。
+A **WebGPU-based quantum circuit editor and simulation environment** that runs in the browser.
+The circuit editor is written in Rust + egui and delivered as WebAssembly; state vectors and display blocks are computed with WebGPU compute shaders.
 
-[Qni](https://github.com/qniapp/qni) (qni-gl, WebGL 系) の正式な後継プロジェクトで、状態シミュレーションを **GPU 上で完結させる構成** に刷新しています。
+The official successor to [Qni](https://github.com/qniapp/qni) (the WebGL-based qni-gl), it has been redesigned to keep state simulation **entirely on the GPU**.
 
-![qni-webgpu の Web UI。5 量子ビットの Grover 探索回路と、振幅増幅後の状態ベクトル表示](docs/assets/screenshot.png)
+![qni-webgpu Web UI showing a five-qubit Grover search circuit and the state vector after amplitude amplification](docs/assets/screenshot.png)
 
-> 画面例: サンプル回路の Grover 探索。状態ベクトル表示で、解の確率振幅だけが大きくなる様子が確認できる。
+> Example: a Grover search sample circuit. The state-vector display shows how the solution's probability amplitude grows while the others remain small.
 
-## 機能
+## Features
 
-- **Web UI 上での量子回路編集** — ゲートパレットからのドラッグでゲートを配置できる。扱える量子ビット数はローカルの WebGPU シミュレーションで最大 16、外部 GPU (Qiskit) バックエンド利用時は最大 32
-- **WebGPU による高速なローカルシミュレーション** — 状態ベクトル / 密度行列 / ブロッホベクトルなどの計算から可視化まで、すべて WebGPU compute shader 上で完結する。GPU → CPU のリードバックが無いため高速
-- **表示ブロック** — 振幅 / 確率 / ブロッホ球 / 密度行列の各表示ブロックをサポート
-- **オプション: 外部 GPU 実行 (Qiskit バックエンド)** — `Run GPU` から `apps/qiskit-backend` の HTTP API へ投げ、Qiskit Aer (cuStateVec) で実行できる
-- **ABCI / Open OnDemand 配備の土台** — Docker / Singularity / Open OnDemand 用の定義を `deploy/` に同梱
+- **Edit quantum circuits in the Web UI** — Drag gates from the palette into the circuit. Local WebGPU simulation supports up to 16 qubits; the external GPU (Qiskit) backend supports up to 32 qubits.
+- **Fast local simulation with WebGPU** — State vectors, density matrices, Bloch vectors, and their displays are computed and rendered on the GPU. The production rendering path does not read data back from GPU to CPU; test-only on-demand reads are separate.
+- **Display blocks** — Amplitude, probability, Bloch sphere, and density matrix display blocks are supported.
+- **External GPU execution (optional Qiskit backend)** — `Run GPU` sends circuits to the HTTP API in `apps/qiskit-backend` for execution with Qiskit Aer (cuStateVec).
+- **Foundation for ABCI / Open OnDemand deployment** — Docker, Singularity, and Open OnDemand definitions are included in `deploy/`.
 
-## クイックスタート
+## Quick start
 
-ローカルで Web UI を起動する最短手順です。
+The shortest path to running the Web UI locally. You need Rust (stable), Node.js 22.18 or later, and pnpm 9.
 
-### 1. Rust と Trunk を用意する
+### 1. Set up Rust and Trunk
 
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
 ```
 
-### 2. 開発サーバを起動する
+### 2. Start the development server
 
 ```bash
 cd apps/web
+pnpm install
 trunk serve --address 127.0.0.1 --port 4174 --no-autoreload
 ```
 
-### 3. Chrome でアクセスする
+### 3. Open it in a browser
 
-WebGPU 対応ブラウザ (Chrome / Chromium 系の最新版を推奨) で次を開きます。
+Open the following URL in a WebGPU-capable browser (a recent Chrome or other Chromium-based browser is recommended):
 
-```
+```text
 http://127.0.0.1:4174/
 ```
 
-リポジトリルートから `./scripts/open-web.sh` を使うと、`google-chrome-stable` を優先して開きます。
+From the repository root, `./scripts/open-web.sh` opens the already running Web UI. It tries `google-chrome-stable` first.
 
-詳しい起動方法と環境変数は [`docs/web.md`](docs/web.md) を参照してください。
+For more on startup and environment variables, see [`docs/web.md`](docs/web.md).
 
-## 開発
+## Development
 
-主要なチェックはリポジトリルートからまとめて実行できます。
+Run the main checks together from the repository root:
 
 ```bash
 ./scripts/check-all.sh
 ```
 
-これは Trunk 本番ビルド、Web の BDD / Playwright テスト、Node の配備設定テスト、Qiskit バックエンドのスモークテスト、Rust の fmt / clippy / test / snapshot / audit / deny をまとめて流します。
+This runs Web Rust fmt / clippy / test / snapshot checks and a production Trunk build, Web preflight / BDD / Playwright tests, Node deployment configuration tests, a Qiskit backend installation smoke check and tests, and TUI fmt / clippy / test / snapshot / audit / deny checks. It does not include documentation linting. Beyond the quick-start prerequisites, this requires `cargo-insta`, `cargo-audit`, `cargo-deny`, Playwright Chromium and Xvfb, and Python 3.10+.
 
-個別に動かしたい場合の主なコマンド:
+Main commands for running checks individually:
 
-- **Web の BDD (Cucumber)**: `cd apps/web && pnpm install && pnpm run test:bdd`
-- **Web の Playwright**: `cd apps/web && pnpm exec playwright install chromium && xvfb-run -a -s "-screen 0 1920x1080x24" pnpm exec playwright test`
-- **ドキュメント lint**: `./scripts/lint-docs.sh` (用語ゆれ / HTML 構造 / Markdown スタイル)
+- **Web BDD (Cucumber)**: `cd apps/web && pnpm install && pnpm run test:bdd`
+- **Web Playwright**: `cd apps/web && pnpm exec playwright install chromium && xvfb-run -a -s "-screen 0 1920x1080x24" pnpm exec playwright test` (requires Xvfb for `xvfb-run`)
+- **Documentation lint**: `./scripts/lint-docs.sh` (terminology consistency / HTML structure / Markdown style)
 
-詳細は [`docs/rust.md`](docs/rust.md) と [`docs/web.md`](docs/web.md) を参照してください。
+See [`docs/rust.md`](docs/rust.md) and [`docs/web.md`](docs/web.md) for details.
 
-## Qiskit バックエンド (任意)
+## Qiskit backend (optional)
 
-`Run GPU` から呼び出す外部 GPU 実行用のローカルバックエンドです。Web UI は回路を送り、バックエンドはヒストグラムと表示ブロック単位の結果だけを返します。全状態ベクトルや全確率分布は転送しません。
+This is the local backend for external GPU execution invoked by `Run GPU`. The Web UI sends the circuit; the backend returns only a histogram and per-display-block results. It does not transfer the full state vector or full probability distribution.
 
 ```mermaid
 flowchart LR
-  ui["Web UI<br/>(apps/web)"] -- "回路 (Run GPU)" --> backend["Qiskit バックエンド<br/>(apps/qiskit-backend)"]
-  backend -- "Qiskit 回路" --> aer["Qiskit Aer<br/>(GPU / cuStateVec)"]
-  aer -- "状態ベクトル" --> backend
-  backend -- "ヒストグラム + 表示ブロック結果" --> ui
+  ui["Web UI<br/>(apps/web)"] -- "Circuit (Run GPU)" --> backend["Qiskit backend<br/>(apps/qiskit-backend)"]
+  backend -- "Qiskit circuit" --> aer["Qiskit Aer<br/>(GPU / cuStateVec)"]
+  aer -- "State vector" --> backend
+  backend -- "Histogram + display-block results" --> ui
 ```
 
-ローカルで起動する最短手順:
+Shortest way to start it locally (requires Python 3.10 or later):
 
 ```bash
 PYTHONPATH=apps/qiskit-backend/src python3 -m qni_qiskit_backend --port 4184 --runner mock
 ```
 
-ランナーは 3 種類あります。
+There are three runners:
 
-- `mock` — 固定ヒストグラム / 固定表示ブロック結果を返す。UI と API のスモークテスト用。
-- `qiskit-cpu-dev` — Qiskit 経路を CPU で確認するための **明示的な開発用ランナー**。WebGPU の CPU フォールバックではない。
-- `qiskit-gpu` — `device="GPU"` / `cuStateVec_enable=True` を要求する本番相当のランナー。CPU フォールバックしない。
+- `mock` — Returns a fixed histogram and display-block results. For UI and API smoke tests.
+- `qiskit-cpu-dev` — An **explicit development runner** for checking the Qiskit path on a CPU. It is not a WebGPU CPU fallback.
+- `qiskit-gpu` — A production-equivalent runner that requires `device="GPU"` / `cuStateVec_enable=True`. It does not fall back to the CPU.
 
-本番配備では `qiskit-gpu` だけを許可し、`mock` / `qiskit-cpu-dev` を要求するリクエストは拒否します。詳細は [`apps/qiskit-backend/README.md`](apps/qiskit-backend/README.md) を参照してください。
+Production deployment permits only `qiskit-gpu` and rejects requests for `mock` or `qiskit-cpu-dev`. The external backend supports up to 32 qubits, but exact amplitude display extraction is limited to 16 qubits or fewer. See [`apps/qiskit-backend/README.md`](apps/qiskit-backend/README.md) for details.
 
-## デプロイ
+## Deployment
 
-ABCI の GPU ノードで動かすための Docker / Singularity / Open OnDemand 定義を `deploy/` に同梱しています。Open OnDemand 経由では `singularity run --nv` で GPU ノード上に起動し、`/node/<host>/<port>/` 配下で Web UI と `/run` API を提供します。
+Definitions for Docker, Singularity, and Open OnDemand on ABCI GPU nodes are included in `deploy/`. Through Open OnDemand, `singularity run --nv` starts the application on a GPU node, providing the Web UI and `/run` API under `/node/<host>/<port>/`.
 
 ```bash
 docker build -t qni-webgpu-abci .
@@ -103,23 +106,25 @@ docker run --gpus all --rm -p 8000:8000 \
   qni-webgpu-abci
 ```
 
-配備手順の詳細は次を参照してください。
+This example enables Basic authentication. The container also starts without credentials, so configure authentication in public environments (`QNI_REQUIRE_BASIC_AUTH=true` rejects startup without credentials).
 
-- [`docs/implementation/abci-deployment-guide.md`](docs/implementation/abci-deployment-guide.md) — ABCI Open OnDemand 配備手順
-- [`docs/implementation/external-gpu-api-compatibility.md`](docs/implementation/external-gpu-api-compatibility.md) — 外部 GPU API の互換方針
-- [`docs/implementation/qni-gl-migration-notes.md`](docs/implementation/qni-gl-migration-notes.md) — qni-gl との差分
+For deployment details, see:
 
-## ドキュメント
+- [`docs/implementation/abci-deployment-guide.md`](docs/implementation/abci-deployment-guide.md) — ABCI Open OnDemand deployment guide
+- [`docs/implementation/external-gpu-api-compatibility.md`](docs/implementation/external-gpu-api-compatibility.md) — External GPU API compatibility policy
+- [`docs/implementation/qni-gl-migration-notes.md`](docs/implementation/qni-gl-migration-notes.md) — Differences from qni-gl
 
-- [`docs/architecture.md`](docs/architecture.md) — WebGPU 版のアーキテクチャ概要
-- [`docs/tech-stack.md`](docs/tech-stack.md) — 技術スタック (Rust / wgpu / egui / Trunk)
-- [`docs/web.md`](docs/web.md) — Web アプリの起動・確認手順
-- [`docs/rust.md`](docs/rust.md) — Rust 側のチェック手順
-- [`docs/design.md`](docs/design.md) — UI 設計メモ
-- [`apps/qiskit-backend/README.md`](apps/qiskit-backend/README.md) — Qiskit バックエンドの API 仕様
+## Documentation
 
-## 既知の制限
+- [`docs/architecture.md`](docs/architecture.md) — WebGPU architecture overview
+- [`docs/tech-stack.md`](docs/tech-stack.md) — Technology stack (Rust / wgpu / egui / Trunk)
+- [`docs/web.md`](docs/web.md) — Starting and checking the Web app
+- [`docs/rust.md`](docs/rust.md) — Rust checks
+- [`docs/design.md`](docs/design.md) — UI design notes
+- [`apps/qiskit-backend/README.md`](apps/qiskit-backend/README.md) — Qiskit backend API specification
 
-- **WebGPU 対応ブラウザが必要**: 主要ブラウザの最新版 (Chrome / Edge / Firefox / Safari) で動作する。ただし Firefox の Linux 安定版は WebGPU 未対応で、Nightly / Beta で `gfx.webgpu.ignore-blocklist` を有効にする必要がある (2026 年 5 月時点)。対応していない GPU / ドライバでも起動しない。
-- **Qiskit バックエンドは別途用意**: `Run GPU` を使うには `apps/qiskit-backend` を別プロセスで起動する必要がある。本番 `qiskit-gpu` ランナーは CUDA / cuStateVec を要求する。
-- **ABCI 配備は環境依存**: `deploy/` 配下の定義は ABCI 実機での検証が部分的であり、資源種別 / モジュール名は環境に合わせて調整する必要がある。
+## Known limitations
+
+- **A WebGPU-capable browser is required**: The latest versions of major browsers (Chrome / Edge / Firefox / Safari) work. However, Firefox stable on Linux does not support WebGPU; you need to enable `gfx.webgpu.ignore-blocklist` in Nightly / Beta (as of May 2026). The app will not start with a GPU or driver that does not support WebGPU.
+- **The Qiskit backend must be set up separately**: To use `Run GPU`, start `apps/qiskit-backend` as a separate process. The production `qiskit-gpu` runner requires CUDA / cuStateVec.
+- **ABCI deployment is environment-dependent**: The definitions under `deploy/` have only been partially tested on actual ABCI infrastructure; resource types and module names must be adjusted for your environment.

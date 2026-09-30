@@ -268,7 +268,7 @@ fn paint_exec_mode_toggle(
     painter.rect_stroke(
         track_rect,
         egui::CornerRadius::same(8),
-        egui::Stroke::new(1.0, colors.line),
+        egui::Stroke::new(1.0_f32, colors.line),
         egui::StrokeKind::Inside,
     );
 

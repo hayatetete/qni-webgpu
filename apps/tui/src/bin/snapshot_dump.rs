@@ -117,7 +117,7 @@ fn main() -> io::Result<()> {
     output.push_str(&format!("SIZE\t{}\t{}\n", width, height));
     for y in 0..height {
         for x in 0..width {
-            let cell = buffer.get(x, y);
+            let cell = &buffer[(x, y)];
             let mut symbol = cell.symbol().to_string();
             if symbol.is_empty() {
                 symbol = " ".to_string();

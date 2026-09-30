@@ -99,7 +99,7 @@ pub(crate) fn paint_card(painter: &egui::Painter, colors: &Colors, rect: egui::R
     painter.rect_stroke(
         rect,
         corner,
-        egui::Stroke::new(1.0, colors.popover_outline),
+        egui::Stroke::new(1.0_f32, colors.popover_outline),
         egui::StrokeKind::Inside,
     );
 }

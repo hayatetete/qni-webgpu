@@ -4,6 +4,7 @@ import {
   readProbabilityDistributions,
   sampleCanvasPixels,
   waitForStartupReady,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -81,18 +82,23 @@ const waitForSnapshot = async (
   predicate: (state: CircuitLibrarySnapshot) => boolean,
   description: string,
 ): Promise<CircuitLibrarySnapshot> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      const state = await snapshot(page)
-      if (predicate(state)) return state
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('__qniCircuitPickerSnapshot hook missing')) {
-        throw error
+  // 反映はフレーム描画をまたぐため、回数で切ると CPU 飽和時に取りこぼす。
+  const state = await waitForValue(
+    async () => {
+      try {
+        return await snapshot(page)
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('__qniCircuitPickerSnapshot hook missing')) {
+          throw error
+        }
+        return null
       }
-    }
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for circuit picker snapshot: ${description}`)
+    },
+    (value) => value !== null && predicate(value),
+    `timed out waiting for circuit picker snapshot: ${description}`,
+  )
+  if (!state) throw new Error(`circuit picker snapshot missing: ${description}`)
+  return state
 }
 
 const renameGeometry = async (page: Page): Promise<CircuitPickerRenameGeometry | null> =>
@@ -102,12 +108,13 @@ const renameGeometry = async (page: Page): Promise<CircuitPickerRenameGeometry |
   })
 
 const waitForRenameGeometry = async (page: Page): Promise<CircuitPickerRenameGeometry> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const geometry = await renameGeometry(page)
-    if (geometry) return geometry
-    await page.waitForTimeout(50)
-  }
-  throw new Error('timed out waiting for circuit picker rename geometry')
+  const geometry = await waitForValue(
+    () => renameGeometry(page),
+    (value) => value !== null,
+    'timed out waiting for circuit picker rename geometry',
+  )
+  if (!geometry) throw new Error('circuit picker rename geometry missing')
+  return geometry
 }
 
 const storedDocument = async (page: Page): Promise<any> =>
@@ -484,11 +491,28 @@ test('Move up keeps the displaced bottom item visually idle', async ({ page }) =
   await waitForSnapshot(page, (state) => state.active_id === 'qft', 'seeded QFT active')
 
   await clickCanvas(page, TRIGGER)
-  await page.waitForTimeout(300)
+  await waitForValue(
+    () => page.evaluate(() => (window as any).__qniCircuitPickerDropdownGeometryJson ?? null),
+    (geometry) => typeof geometry === 'string',
+    'circuit picker dropdown paint',
+  )
+  // egui は移動とクリックの間に描画を挟むと kebab のホバーを認識する。
+  await page.mouse.move(KEBAB_X, ROW_4.y)
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   await clickCanvas(page, { x: KEBAB_X, y: ROW_4.y })
-  await page.waitForTimeout(300)
-  await clickCanvas(page, { x: SUBMENU_X, y: MOVE_UP_SUBMENU_Y + 36 })
-  await page.waitForTimeout(300)
+  const submenu = await waitForValue(
+    () => page.evaluate(() => {
+      const raw = (window as any).__qniCircuitPickerGeometryJson
+      return typeof raw === 'string' ? JSON.parse(raw) as { index: number; submenu_left: number; submenu_right: number } : null
+    }),
+    (geometry) => geometry?.index === 3,
+    'QFT kebab submenu paint',
+  )
+  if (!submenu) throw new Error('QFT kebab submenu missing')
+  const moveUp = { x: (submenu.submenu_left + submenu.submenu_right) / 2, y: MOVE_UP_SUBMENU_Y + 36 }
+  await page.mouse.move(moveUp.x, moveUp.y)
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await clickCanvas(page, moveUp)
 
   const state = await waitForSnapshot(
     page,

@@ -9,6 +9,9 @@ umask 077
 : "${QNI_QISKIT_RUNNER:=qiskit-gpu}"
 : "${QNI_QISKIT_ALLOWED_RUNNERS:=qiskit-gpu}"
 : "${QNI_REQUIRE_BASIC_AUTH:=false}"
+# nginx 設定テンプレートの位置。既定はコンテナ内の配置先で、テストからは
+# リポジトリ内のテンプレートを指すために上書きする。
+: "${QNI_NGINX_TEMPLATE:=/etc/qni-webgpu/nginx.conf.template}"
 
 if [[ "${QNI_QISKIT_RUNNER}" != "qiskit-gpu" ]]; then
   echo "QNI_QISKIT_RUNNER must be qiskit-gpu in the production container" >&2
@@ -33,12 +36,12 @@ mkdir -p "${QNI_RUNTIME_DIR}" \
   "${QNI_RUNTIME_DIR}/uwsgi_temp" \
   "${QNI_RUNTIME_DIR}/scgi_temp"
 
-AUTH_SNIPPET="${QNI_RUNTIME_DIR}/qni-auth.conf"
+QNI_AUTH_SNIPPET="${QNI_RUNTIME_DIR}/qni-auth.conf"
 HTPASSWD_FILE="${QNI_RUNTIME_DIR}/.htpasswd"
 BACKEND_TOKEN_FILE="${QNI_RUNTIME_DIR}/backend-token"
 SERVER_CONF="${QNI_RUNTIME_DIR}/server.conf"
 NGINX_CONF="${QNI_RUNTIME_DIR}/nginx.conf"
-: > "${AUTH_SNIPPET}"
+: > "${QNI_AUTH_SNIPPET}"
 
 if [[ -n "${QNI_AUTH_HTPASSWD_FILE:-}" ]]; then
   if [[ ! -f "${QNI_AUTH_HTPASSWD_FILE}" ]]; then
@@ -77,12 +80,12 @@ elif [[ "${QNI_REQUIRE_BASIC_AUTH}" == "true" ]]; then
 fi
 
 if [[ -f "${HTPASSWD_FILE}" ]]; then
-  cat > "${AUTH_SNIPPET}" <<EOS
+  cat > "${QNI_AUTH_SNIPPET}" <<EOS
 auth_basic "Restricted";
 auth_basic_user_file ${HTPASSWD_FILE};
 EOS
 fi
-chmod 600 "${AUTH_SNIPPET}"
+chmod 600 "${QNI_AUTH_SNIPPET}"
 
 if [[ -n "${QNI_BACKEND_PROXY_TOKEN_FILE:-}" ]]; then
   if [[ ! -f "${QNI_BACKEND_PROXY_TOKEN_FILE}" ]]; then
@@ -102,7 +105,7 @@ chmod 600 "${BACKEND_TOKEN_FILE}"
 
 export QNI_HTTP_PORT QNI_WEB_ROOT QNI_QISKIT_BACKEND_HOST QNI_QISKIT_BACKEND_PORT QNI_AUTH_SNIPPET QNI_BACKEND_PROXY_TOKEN
 envsubst '${QNI_HTTP_PORT} ${QNI_WEB_ROOT} ${QNI_QISKIT_BACKEND_HOST} ${QNI_QISKIT_BACKEND_PORT} ${QNI_AUTH_SNIPPET} ${QNI_BACKEND_PROXY_TOKEN}' \
-  < /etc/qni-webgpu/nginx.conf.template \
+  < "${QNI_NGINX_TEMPLATE}" \
   > "${SERVER_CONF}"
 chmod 600 "${SERVER_CONF}"
 unset QNI_BACKEND_PROXY_TOKEN

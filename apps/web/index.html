@@ -7,49 +7,293 @@
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <script>
+      // Trunk の module script の失敗は bootstrap が監視を始める前にも発生する。
+      window.addEventListener('error', (event) => {
+        if (event instanceof ErrorEvent &&
+            (event.filename === location.href || event.filename === new URL('qni-web.js', location.href).href)) {
+          window.__qniTrunkInitError = event.error || new Error(event.message)
+        }
+      }, true)
+    </script>
     <link data-trunk rel="rust" data-wasm-opt="z" data-target-name="qni_web" />
     <link data-trunk rel="copy-file" href=".trunk-generated/bootstrap.js" />
     <link data-trunk rel="copy-file" href="favicon.ico" />
     <link data-trunk rel="copy-file" href="icon.svg" />
     <link data-trunk rel="copy-file" href="apple-touch-icon.png" />
+    <link data-trunk rel="copy-file" href="assets/Geist-Regular.ttf" />
+    <link data-trunk rel="copy-file" href="assets/Geist-Bold.ttf" />
+    <link data-trunk rel="copy-file" href="assets/GeistMono-Regular.ttf" />
     <style>
-      html,
-      body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #ffffff;
-      }
-
-      #egui-canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-
-      #app-status {
-        position: fixed;
-        inset: 1rem 1rem auto 1rem;
-        max-width: 42rem;
-        padding: 0.875rem 1rem;
-        border-radius: 0.75rem;
-        border: 1px solid #ef4444;
-        background: rgba(255, 244, 244, 0.96);
-        color: #7f1d1d;
-        font: 14px/1.5 system-ui, sans-serif;
-        box-shadow: 0 12px 40px rgba(127, 29, 29, 0.14);
-        white-space: pre-wrap;
-      }
-
-      #app-status[hidden] {
-        display: none;
-      }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #FFFCF0; /* Flexoki bg */ }
+      #egui-canvas { display: block; width: 100%; height: 100%; }
+      /* Keep the error reachable even if the external stylesheet fails to load. */
+      #app-status { position: fixed; inset: 0; overflow: auto; background: #FFFCF0; /* Flexoki bg */ }
+      #app-status[hidden] { display: none; }
+      #app-status.plain-error { inset: 16px 16px auto; width: min(672px, calc(100% - 32px));
+        padding: 16px; border: 1px solid #AD2715; border-radius: 12px; /* Flexoki red-600 / rounded-xl */
+        background: #FFFCF0; color: #100F0F; font: 14px/20px 'Qni Geist', sans-serif; white-space: pre-wrap; }
+      #app-status.plain-error .stage, #app-status.plain-error dialog { display: none; }
     </style>
+    <link data-trunk rel="css" href="gpu-error.css" />
   </head>
   <body>
     <canvas id="egui-canvas"></canvas>
-    <div id="app-status" data-testid="webgpu-error" hidden></div>
-    <script type="module" src="bootstrap.js"></script>
+    <div id="app-status" data-testid="webgpu-error" hidden>
+      <p id="asset-error" hidden></p>
+<main class="stage">
+  <!-- 3 歳児がクレヨンで描いた量子回路。最後の線を引いている途中でクレヨンが折れ、続き (測定) は描かれていない -->
+  <div class="art" aria-hidden="true">
+    <svg viewBox="0 0 1200 440">
+      <defs>
+        <!-- クレヨンらしさ: 輪郭のゆらぎ + ざらついた塗り -->
+        <filter id="crayon" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" result="wobble"/>
+          <feDisplacementMap in="SourceGraphic" in2="wobble" scale="6" xChannelSelector="R" yChannelSelector="G" result="moved"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="9" result="grain"/>
+          <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3.2 0 0 0 -0.75" result="mask"/>
+          <feComposite in="moved" in2="mask" operator="in"/>
+        </filter>
+        <filter id="wobble" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="1" seed="2" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+      </defs>
+
+      <!-- まだ描かれていない続き: 鉛筆の下書き (ワイヤと測定ゲート) -->
+      <g filter="url(#wobble)">
+        <path class="pencil" d="M700 152 C 800 147, 900 158, 1000 151 S 1120 149, 1170 152"/>
+        <path class="pencil" d="M650 290 C 780 294, 900 285, 1000 291 S 1120 292, 1170 289"/>
+        <path class="pencil paper" d="M1026 118 L1096 116 L1095 186 L1025 187 Z"/>
+        <path class="pencil" d="M1040 172 A21 21 0 0 1 1082 172 M1061 172 L1073 144"/>
+        <path class="pencil paper" d="M1026 256 L1095 255 L1096 324 L1024 325 Z"/>
+        <path class="pencil" d="M1040 310 A21 21 0 0 1 1082 310 M1061 310 L1073 282"/>
+      </g>
+
+      <!-- ゲートの中を紙色で塗る (線が透けないように) -->
+      <path class="paper" d="M152 104 L250 100 L252 200 L150 202 Z"/>
+      <circle class="paper" cx="421" cy="290" r="30"/>
+
+      <!-- 幼児の重ね書き: 色が重なった所は乗算で濃くなる -->
+      <g class="ink" filter="url(#crayon)">
+        <!-- すみっこの太陽 (3 歳児の定番) -->
+        <path class="crayon-line c-yellow" d="M92 58 m-16 0 a16 16 0 1 1 32 2 a15 15 0 1 1 -30 -4 M92 26 l1 -14 M118 38 l10 -9 M126 62 l14 1 M66 38 l-10 -10 M60 62 l-14 2 M92 90 l0 12 M116 84 l9 9 M68 84 l-9 9"/>
+
+        <!-- 1 本目のワイヤ: 描き出しの迷い線と、強く押した所 -->
+        <path class="crayon-line c-blue w3" d="M24 138 C 32 142, 42 146, 54 145 M30 168 C 38 161, 46 158, 58 159"/>
+        <path class="crayon-line c-blue" d="M52 150 C 90 140, 120 162, 160 150 S 230 138, 262 152 C 290 164, 320 142, 352 149 S 420 160, 470 152"/>
+        <path class="crayon-line c-blue w12" d="M318 149 C 328 146, 338 152, 348 149"/>
+        <!-- 1 本目の最後: いま描いている線 (折れて止まる) -->
+        <path class="crayon-line c-blue w9 draw last" pathLength="100" d="M470 152 C 510 161, 540 141, 580 154 S 630 147, 648 153"/>
+
+        <!-- 2 本目のワイヤ: 大きなくるりんと、最後の毛玉 -->
+        <path class="crayon-line c-blue" d="M44 290 C 90 300, 130 280, 180 292 S 260 302, 300 288 C 340 276, 380 300, 440 292 S 540 282, 590 294"/>
+        <path class="crayon-line c-blue w5" d="M236 292 c 6 -46 62 -42 46 -6 c -12 24 -50 14 -32 -16 c 14 -22 46 -16 52 6"/>
+        <path class="crayon-line c-blue w5" d="M594 292 c 14 -20 32 -4 18 9 c -14 12 -26 -8 -9 -15 c 15 -6 22 11 8 15"/>
+
+        <!-- H ゲート (オレンジ): 二重に描いた四角と、足の長い H -->
+        <path class="crayon-line c-orange" d="M152 104 C 186 98, 222 104, 250 100 C 254 130, 248 170, 252 200 C 216 204, 184 198, 150 202 C 148 170, 154 134, 146 100 L 168 95"/>
+        <path class="crayon-line c-orange w3" d="M158 111 C 190 106, 216 110, 244 107 C 246 140, 244 172, 246 194 C 214 196, 186 192, 157 196 C 156 166, 160 138, 156 108"/>
+        <path class="crayon-line c-orange w9" d="M182 122 C 184 142, 180 164, 186 184 M218 118 C 214 142, 220 170, 214 198 M180 154 C 196 146, 206 158, 222 148"/>
+
+        <!-- CNOT (紫): ぐるぐる塗りの制御点、二度引きの縦線、閉じきらない ⊕ -->
+        <path class="crayon-line c-purple w5" d="M418 146 c 6 -4 8 6 2 8 c -6 2 -8 -8 0 -9 M420 151 m-2 0 a2 2 0 1 1 4 1 a6 6 0 1 1 -11 -2 a10 10 0 1 1 20 2 a13 13 0 1 1 -25 -1 a15 14 0 1 1 28 3"/>
+        <path class="crayon-line c-purple" d="M421 168 C 416 200, 428 230, 418 262"/>
+        <path class="crayon-line c-purple w3 faint" d="M425 170 C 422 204, 417 234, 425 260"/>
+        <path class="crayon-line c-purple" d="M394 284 C 392 262, 414 258, 424 260 C 444 262, 452 280, 450 294 C 448 312, 430 320, 416 318 C 398 316, 388 300, 392 284 C 396 270, 412 264, 430 266 C 446 270, 452 286, 446 300"/>
+        <path class="crayon-line c-purple w5" d="M421 262 C 422 280, 418 300, 423 322 M392 293 C 408 288, 432 296, 452 289"/>
+
+        <!-- 折れた瞬間の線 -->
+        <g class="impact">
+          <path class="crayon-line c-impact" d="M726 84 l9 -18 M744 100 l21 -6 M700 80 l-3 -20"/>
+        </g>
+      </g>
+
+      <!-- ワックスのかけら -->
+      <g filter="url(#wobble)">
+        <ellipse class="crumb k1" cx="726" cy="138" rx="3.5" ry="3"/>
+        <ellipse class="crumb k2" cx="734" cy="103" rx="2.5" ry="2"/>
+        <ellipse class="crumb k3" cx="714" cy="150" rx="2.2" ry="1.8"/>
+        <ellipse class="crumb k4" cx="698" cy="91" rx="1.8" ry="1.5"/>
+        <ellipse class="crumb k5" cx="718" cy="210" rx="2.8" ry="2.3"/>
+        <ellipse class="crumb k6" cx="728" cy="194" rx="2" ry="1.6"/>
+        <ellipse class="crumb k7" cx="732" cy="236" rx="1.6" ry="1.4"/>
+      </g>
+
+      <!-- 折れたワックスクレヨン (太い円柱): 先端側。鈍くすり減った先、ほつれた巻紙、粒の見える断面 -->
+      <g class="tip" filter="url(#wobble)">
+        <path class="wax" d="M3 -11 Q-5 0 3 11 L24 20 L24 -20 Z"/>
+        <ellipse class="wax-worn" cx="1" cy="0" rx="4" ry="10"/>
+        <path class="wax" d="M23 -20 L68 -20 L74 -12 L69 -5 L76 3 L70 11 L74 20 L23 20 Z"/>
+        <path class="wax-shade" d="M26 14 L68 14"/>
+        <path class="wax-hi" d="M8 -8 L66 -13"/>
+        <path class="wrapper" d="M40 -21 L61 -21 L65 -15 L60 -9 L66 -2 L61 5 L67 12 L62 21 L40 21 Z"/>
+        <path class="wrap-ink" d="M46 -21 L46 21 M51 -21 L51 21"/>
+        <path class="wrap-fray broken" d="M63 -16 l6 -4 M62 -3 l7 -1 M63 10 l6 3"/>
+        <path class="wax-core broken" d="M66 -19 L75 -12 L70 -5 L77 3 L71 11 L75 19 L68 19 L65 8 L69 -2 L64 -12 Z"/>
+        <g class="grain broken"><circle cx="70" cy="-11" r="1.6"/><circle cx="72" cy="1" r="1.3"/><circle cx="69" cy="13" r="1.5"/></g>
+        <g class="grain lt broken"><circle cx="67" cy="-4" r="1.2"/><circle cx="73" cy="8" r="1"/></g>
+        <path class="wax whole" d="M60 -20 L86 -20 L86 20 L60 20 Z"/>
+      </g>
+
+      <!-- 折れたワックスクレヨン: 残り (転がって離れる)。平らな尻 -->
+      <g class="rest" filter="url(#wobble)">
+        <g>
+          <path class="wax" d="M4 -20 L-3 -12 L3 -4 L-4 4 L2 12 L-2 20 L188 20 L188 -20 Z"/>
+          <ellipse class="wax-end" cx="188" cy="0" rx="6" ry="20"/>
+          <path class="wax-shade" d="M6 14 L186 14"/>
+          <path class="wax-hi" d="M6 -12 L186 -12"/>
+          <path class="wrapper" d="M22 -21 L176 -21 L176 21 L26 21 L20 14 L27 8 L19 1 L26 -6 L20 -13 Z"/>
+          <path class="wrap-ink" d="M34 -21 L34 21 M39 -21 L39 21 M160 -21 L160 21 M165 -21 L165 21"/>
+          <path class="wrap-ink" d="M72 2 q6 -9 12 0 t12 0 t12 0 t12 0 t12 0"/>
+          <path class="wax-core broken" d="M4 -18 L-3 -12 L3 -4 L-4 4 L2 12 L-1 18 L8 16 L11 4 L7 -6 L11 -16 Z"/>
+          <g class="grain broken"><circle cx="4" cy="-10" r="1.6"/><circle cx="6" cy="2" r="1.4"/><circle cx="3" cy="12" r="1.3"/></g>
+          <g class="grain lt broken"><circle cx="8" cy="-3" r="1.2"/><circle cx="7" cy="9" r="1"/></g>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="copy">
+    <h1>No GPU access.</h1>
+    <p class="lead">Qni runs every calculation on the GPU, but this browser can’t use it right now.</p>
+    <p class="step">
+      <svg viewBox="0 0 40 24" aria-hidden="true"><path class="arrow" d="M3 13 C 12 9, 22 15, 34 11 M26 4 C 30 7, 33 9, 35 11 C 32 14, 29 17, 27 20"/></svg>
+      Try opening Qni in a different browser.
+    </p>
+    <div class="more">
+      <button type="button" class="link" data-linux-chromium data-open-steps hidden>Linux Chromium? Try these steps</button>
+      <details>
+        <summary>Error details</summary>
+        <pre class="raw">Error details unavailable.</pre>
+      </details>
+    </div>
+  </div>
+</main>
+
+<dialog id="linux-steps" aria-labelledby="linux-title" data-linux-chromium hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="linux-title">Try these steps on Linux Chromium</h2>
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+    <p>Chromium on Linux sometimes can’t use the GPU even when one is installed. Starting a separate Chromium window with experimental WebGPU flags can help.</p>
+    <ol>
+      <li>
+        Open a terminal and run:
+        <div class="codehead"><span>Terminal</span><button type="button" class="btn" data-copy-cmd>Copy command</button></div>
+        <pre class="cmd" id="cmd">chromium \
+  --user-data-dir=<wbr>/tmp/<wbr>qni-webgpu-hardware \
+  --ozone-platform=x11 \
+  --enable-features=<wbr>Vulkan,<wbr>WebGPU,<wbr>WebGPUService \
+  --enable-unsafe-webgpu \
+  --ignore-gpu-blocklist \
+  http://127.0.0.1:4174/</pre>
+      </li>
+      <li>If Qni opens in the new window, it’s working. For Google Chrome, replace <code>chromium</code> with <code>google-chrome</code>.</li>
+    </ol>
+    <ul class="caution">
+      <li>This uses a separate profile, so your everyday Chromium profile stays untouched.</li>
+      <li>These flags relax browser safety checks. Use this window only for Qni on your own machine (localhost), not for other websites.</li>
+    </ul>
+  </div>
+</dialog>
+    </div>
+    <p class="sr-only" aria-live="polite" id="gpu-error-announcement"></p>
+    <script>
+  // クレヨンの動き: 描かれる線と同じ経路を getPointAtLength でたどるので、先端が線の描き終わりから離れない
+  const DELAY = 300                        // ms: 描き始めるまで
+  const DRAW = 992                         // ms: 線を描き終えて折れるまで (CSS の --snap 1.6s の 62%)
+  const SETTLE = 608                       // ms: 折れてから落ち着くまで
+  const EASE_DRAW = 'cubic-bezier(.55, 0, .9, .5)' // だんだん力が入る (CSS の --ease-draw と同じ)
+  const TILT = -32                         // deg: 描いているときのクレヨンの傾き
+  const TIP_LENGTH = 72                    // 先端側の長さ (折れ口までの距離)
+  function animateCrayon() {
+    const line = document.querySelector('.draw.last')
+    const tip = document.querySelector('.tip')
+    const rest = document.querySelector('.rest')
+    const length = line.getTotalLength()
+    const rad = TILT * Math.PI / 180
+    const joint = { x: TIP_LENGTH * Math.cos(rad), y: TIP_LENGTH * Math.sin(rad) } // 先端から折れ口まで
+    const pose = (x, y, deg) => `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) rotate(${deg}deg)`
+    const tipFrames = []
+    const restFrames = []
+    const samples = 60
+    for (let i = 0; i <= samples; i++) {
+      const pt = line.getPointAtLength(length * i / samples)
+      tipFrames.push({ offset: i / samples, transform: pose(pt.x, pt.y, TILT) })
+      restFrames.push({ offset: i / samples, transform: pose(pt.x + joint.x, pt.y + joint.y, TILT) })
+    }
+    const end = line.getPointAtLength(length)
+    const drawing = { duration: DRAW, delay: DELAY, easing: EASE_DRAW, fill: 'both' }
+    line.animate([{ strokeDashoffset: 100 }, { strokeDashoffset: 0 }], drawing)
+    tip.animate(tipFrames, drawing)
+    rest.animate(restFrames, drawing)
+    // 折れたあと: 先端側は少し跳ね、残りは転がり落ちる (最終位置は CSS の基準と同じ)
+    const settling = { duration: SETTLE, delay: DELAY + DRAW, fill: 'forwards' }
+    tip.animate([
+      { transform: pose(end.x, end.y, TILT), easing: 'ease-out' },
+      { offset: .2, transform: pose(end.x + 4, end.y + 4, -24) },
+      { transform: pose(end.x, end.y, -30) },
+    ], settling)
+    rest.animate([
+      { transform: pose(end.x + joint.x, end.y + joint.y, TILT), easing: 'cubic-bezier(.3, 0, .6, 1)' },
+      { offset: .42, transform: pose(752, 196, 28), easing: 'ease-out' },
+      { offset: .68, transform: pose(741, 211, 14) },
+      { transform: pose(742, 214, 18) },
+    ], settling)
+  }
+  // Animate only when the error is actually shown; successful startup does no work.
+  window.__qniShowGpuError = () => {
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) animateCrayon()
+  }
+
+  // OS 判定: userAgentData → platform → userAgent の順に代替する
+  function isLinux() {
+    const uaPlatform = navigator.userAgentData?.platform
+    if (uaPlatform) return uaPlatform === 'Linux'
+    const ua = navigator.userAgent || ''
+    if (/Android|CrOS/i.test(ua)) return false
+    if (navigator.platform) return /Linux/i.test(navigator.platform)
+    return /Linux/i.test(ua)
+  }
+  // ブラウザ判定: Chromium 系 (Chromium / Google Chrome) だけ
+  function isChromium() {
+    const brands = navigator.userAgentData?.brands
+    if (brands) return brands.some((b) => /Chromium|Google Chrome/.test(b.brand)) && !brands.some((b) => /Edge|Opera/.test(b.brand))
+    const ua = navigator.userAgent || ''
+    return /Chrom(e|ium)\//.test(ua) && !/Firefox|FxiOS|Edg\/|OPR\//.test(ua)
+  }
+  // These experimental flags and the command URL are for trusted local testing only.
+  if (location.port === '4174' && ['127.0.0.1', 'localhost'].includes(location.hostname) && isLinux() && isChromium()) {
+    document.querySelectorAll('[data-linux-chromium]').forEach((el) => { el.hidden = false })
+  }
+
+  const status = document.getElementById('gpu-error-announcement')
+  const dialog = document.getElementById('linux-steps')
+  const opener = document.querySelector('[data-open-steps]')
+  opener.addEventListener('click', () => dialog.showModal())
+  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close())
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close() })
+  dialog.addEventListener('close', () => opener.focus())
+  dialog.querySelector('[data-copy-cmd]').addEventListener('click', async (e) => {
+    const btn = e.currentTarget
+    try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); btn.textContent = 'Copied' }
+    catch { btn.textContent = 'Copy failed' }
+    status.textContent = btn.textContent
+    setTimeout(() => { btn.textContent = 'Copy command' }, 1600)
+  })
+</script>
+    <script type="module" src="bootstrap.js" id="bootstrap-entry"></script>
+    <script>
+      document.getElementById('bootstrap-entry').addEventListener('error', () => {
+        const status = document.getElementById('app-status')
+        const message = document.getElementById('asset-error')
+        message.textContent = 'Qni could not load. Try a hard reload (Ctrl+Shift+R).'
+        message.hidden = false
+        status.classList.add('plain-error')
+        status.hidden = false
+      })
+    </script>
   </body>
 </html>

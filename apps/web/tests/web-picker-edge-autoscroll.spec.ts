@@ -3,6 +3,8 @@ import {
   pixelRgbDistance,
   sampleCanvasPixels,
   waitForStartupReady,
+  pollForValue,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -16,6 +18,7 @@ type ResizeGeometry = {
   footer_bottom: number
   first_row_top: number
   scroll_offset_y: number
+  item_dragging: boolean
 }
 type CircuitLibrarySnapshot = {
   entries: Array<{ id: string; name: string; circuit_json: string; updated_at: number }>
@@ -111,13 +114,13 @@ const waitForResizeGeometry = async (
   predicate: (geometry: ResizeGeometry) => boolean = () => true,
   description = 'picker resize geometry',
 ): Promise<ResizeGeometry> => {
-  let last: ResizeGeometry | null = null
-  await waitForCondition(page, async () => {
-    last = await resizeGeometry(page)
-    return last !== null && predicate(last)
-  }, description)
-  if (!last) throw new Error('picker resize geometry missing')
-  return last
+  const geometry = await waitForValue(
+    () => resizeGeometry(page),
+    (value) => value !== null && predicate(value),
+    `timed out waiting for ${description}`,
+  )
+  if (!geometry) throw new Error('picker resize geometry missing')
+  return geometry
 }
 
 const snapshot = async (page: Page): Promise<CircuitLibrarySnapshot> => {
@@ -196,11 +199,25 @@ const lockedRowIconSample = (geometry: ResizeGeometry): Point => ({
   y: geometry.first_row_top + 24,
 })
 
+// 押下と小さな移動が同じフレームに入ると、ドラッグ開始のしきい値判定が成立せず
+// 取りこぼすことがある (CPU が飽和すると顕著)。開始を状態で確かめ、始まって
+// いなければ離してやり直す。`web-picker-resize.spec.ts` の separator ドラッグと
+// 同じ形。
 const beginItemDrag = async (page: Page, point: Point): Promise<void> => {
   const box = await canvasBox(page)
-  await page.mouse.move(box.x + point.x, box.y + point.y)
-  await page.mouse.down()
-  await page.mouse.move(box.x + point.x, box.y + point.y + 8, { steps: 3 })
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.move(box.x + point.x, box.y + point.y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + point.x, box.y + point.y + 8, { steps: 3 })
+    const started = await pollForValue(
+      () => resizeGeometry(page),
+      (geometry) => geometry !== null && geometry.item_dragging,
+      { timeout: 2_000 },
+    )
+    if (started?.item_dragging) return
+    await page.mouse.up()
+  }
+  throw new Error('timed out waiting for item drag to start')
 }
 
 const moveHeldPointer = async (page: Page, point: Point): Promise<void> => {

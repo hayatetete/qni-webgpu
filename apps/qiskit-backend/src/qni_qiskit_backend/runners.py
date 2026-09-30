@@ -25,6 +25,29 @@ class RunnerUnavailable(RuntimeError):
     pass
 
 
+# qiskit / qiskit-aer は任意依存なので遅延読み込みにしている。ただしワーカー
+# スレッドで初回の読み込みを行うと、次のシミュレーションが SIGSEGV で落ちる
+# (qiskit 2.5.2 + qiskit-aer 0.17.2 + numpy 2.4.6 で再現)。読み込みは必ず
+# main スレッドで一度だけ済ませ、以降はキャッシュを使う。
+_QISKIT_MODULES: tuple[Any, Any, Any, Any] | None = None
+
+
+def load_qiskit() -> tuple[Any, Any, Any, Any]:
+    global _QISKIT_MODULES
+    if _QISKIT_MODULES is not None:
+        return _QISKIT_MODULES
+    try:
+        from qiskit import QuantumCircuit, transpile
+        from qiskit.quantum_info import Pauli
+        from qiskit_aer import AerSimulator
+    except Exception as exc:  # pragma: no cover - depends on local env
+        raise RunnerUnavailable(
+            "qiskit and qiskit-aer are required for this runner"
+        ) from exc
+    _QISKIT_MODULES = (QuantumCircuit, transpile, Pauli, AerSimulator)
+    return _QISKIT_MODULES
+
+
 class Runner(Protocol):
     name: str
 
@@ -59,14 +82,7 @@ class QiskitRunner:
     cu_state_vec: bool = False
 
     def run(self, request: RunRequest) -> dict[str, Any]:
-        try:
-            from qiskit import QuantumCircuit, transpile
-            from qiskit.quantum_info import Pauli
-            from qiskit_aer import AerSimulator
-        except Exception as exc:  # pragma: no cover - depends on local env
-            raise RunnerUnavailable(
-                "qiskit and qiskit-aer are required for this runner"
-            ) from exc
+        QuantumCircuit, transpile, Pauli, AerSimulator = load_qiskit()
 
         qubits = request.qubits.value
         qc = QuantumCircuit(qubits, qubits)

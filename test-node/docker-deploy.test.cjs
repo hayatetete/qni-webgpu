@@ -12,7 +12,7 @@ test('Docker deployment keeps GPU-only runner, auth, same-origin API, and Open O
 
   assert.deepEqual({
     dockerBuildsRelativeAssets: /trunk build --release --public-url \.\//.test(dockerfile),
-    dockerPinsQiskitAerTag: /git clone --depth 1 -b 0\.15\.1/.test(dockerfile),
+    dockerPinsQiskitAerTag: /git clone --depth 1 -b 0\.17\.2/.test(dockerfile),
     entrypointRejectsNonGpuRunner: /QNI_QISKIT_RUNNER[^\n]+!= "qiskit-gpu"/.test(entrypoint),
     entrypointRejectsNonGpuAllowedRunners: /QNI_QISKIT_ALLOWED_RUNNERS[^\n]+!= "qiskit-gpu"/.test(entrypoint),
     entrypointStartsServerWithAllowedGpuRunner: /--allowed-runners qiskit-gpu/.test(entrypoint),

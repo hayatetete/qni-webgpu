@@ -169,6 +169,40 @@ legacy Playwright と BDD の両方が同じ shared source of truth を使う。
 repo root の `scripts/check-all.sh` でも staged rollout を維持し、
 `test:preflight` → `test:bdd` → `test:pw-legacy` の順で Web の gate を通す。
 
+### 起動の固まりとテストの不安定さ
+
+Chrome の WebGPU 初期化は、例外を出さずに応答しなくなることがある。
+実測では 6 並列の Playwright 実行で 1〜2 回の実行につき 1 件、単一ページの Cucumber でもまれに起きた。
+症状と切り分けの結果は次のとおり。
+
+- wasm と JavaScript の取得はいずれも 300 ミリ秒以内に完了している。
+- 固まっている最中に JavaScript から `navigator.gpu.requestAdapter()` を呼ぶと、正常にアダプタを返す。
+- それでも起動段階は `runner-start` のまま進まず、キャンバスは 300x150 の初期サイズから変わらない。
+  つまり `eframe::WebRunner::start` の中のデバイス取得が応答していない。
+- WebGPU の仕様でも、ページが前面に無い場合などにアダプタ / デバイス取得が解決しないことは想定されている。
+
+上流の待ちには手を入れられないため、次の 3 段構えにしている。
+
+1. **起動段階の可視化**: Rust 側が `__qniStartupStage` に `runner-start` / `app-new` / `first-frame` を publish する。
+   起動待ちのタイムアウトはこの値を添えて投げるので、どこで止まったか判別できる。
+2. **明示的なエラー化**: `bootstrap.ts` は 15 秒経っても最初のフレームが来なければ、起動エラー表示へ切り替える。
+   期限は `__qniStartupWatchdogMs` で短縮でき、テストはこれを使う。監視が発火したあとで起動が完了した場合は起動側を正としてエラーを取り消す。
+   利用者にキャンバスが白いまま見える状態を残さない。回帰テストは `tests/web-startup-watchdog.spec.ts`。
+3. **自動再読み込み**: 固まりは読み込み直せば解消する。実測では CPU 4 個 / 3 並列で 60 回の読み込みのうち
+   2 回が 90 秒たっても描画へ到達せず、残りは 1.4 秒以内に描画できた。監視は一度だけ自動で読み込み直し、
+   それでも描画されなければエラー表示にする。再読み込みしたかどうかは `sessionStorage` の `qniStartupRetry`
+   で数え、無限ループにしない。この対策で同じ条件の 60 回が 0 件失敗になった。
+4. **待ちの形**: 描画やアニメーションの完了待ちは回数 (50 回 x 50 ms など) で区切らない。
+   CPU が飽和すると「進んでいるのに時間切れ」になるため、`tests/support/web-spec-helpers.ts` の
+   `waitForValue` (時間切れは失敗) と `pollForValue` (時間切れでも最後の観測値を返す) を使う。
+   後者は「出ないこと」を確かめる spec 用。
+5. **並列数と再試行**: `playwright.config.ts` の並列数は CI で 2、それ以外で 3。再試行は CI で 2 回、それ以外で 1 回。
+   `cucumber.ts` の `retry` は 1 回。上限まで落ちるものは本当の退行として扱う。
+
+起動完了フラグ `__eguiReady` は Rust 側が最初のフレーム描画後に立てる。
+`bootstrap.ts` の `start()` 直後に立てると、eframe がイベントリスナを張る前になり、
+テストのクリックが捨てられて不安定さの原因になる。回帰テストは `tests/web-startup-ready.spec.ts`。
+
 ## Performance
 
 CLAUDE.md の方針 (「WebGPU の恩恵を最大限に得る」「production で CPU readback しない」) に対する現状を以下に記録する。詳細な audit 結果は `docs/web-perf-audit.html`。
@@ -183,7 +217,7 @@ CLAUDE.md の方針 (「WebGPU の恩恵を最大限に得る」「production �
 ### recompute あたりの GPU 往復
 
 | 項目 | 旧 | 現 |
-|---|---:|---:|
+| --- | ---: | ---: |
 | `queue.submit` 呼び出し / recompute | N (gate ごと) | **1** |
 | `\|0…0⟩` 初期化のための CPU 確保 + upload | 2^N × 8 byte | **0** (encoder 内で `clear_buffer` + 8 byte `copy_buffer_to_buffer`) |
 | アイドルフレームの params `queue.write_buffer` | 3 / frame | **0** (dirty flag) |
@@ -207,7 +241,7 @@ CLAUDE.md の方針 (「WebGPU の恩恵を最大限に得る」「production �
 実測例 (10 runs each, `--repeat-each 10`):
 
 | テスト | 改修前 中央値 | 改修後 中央値 |
-|---|---:|---:|
+| --- | ---: | ---: |
 | `applies a unitary chain` | 1,251 ms | 1,280 ms |
 | `GPU bloch reduction` | 1,130 ms | 1,132 ms |
 
@@ -231,7 +265,7 @@ Circuit 全体の panel fill も `background` で塗る。Measurement / `|0⟩` 
 ## Notes
 
 - `apps/web/src/lib.rs` uses eframe with the `wgpu` feature enabled.
-- 通常のブラウザ起動で利用可能な WebGPU adapter が見つからない場合、キャンバスが白いままになる代わりに、ページ上に WebGPU 初期化失敗メッセージを表示する。
+- WebGPU を初期化できない場合は、白いキャンバスの代わりにクレヨンの回路図と「No GPU access.」を表示する。別のブラウザで開き直す案内を優先し、元のエラーは折りたたむ。Linux の Chromium 向け実験的な起動手順は、Linux の Chromium で `127.0.0.1:4174` または `localhost:4174` を開いた場合だけ表示する。
 - ローカル手動確認は通常の Chrome で行う。`./scripts/open-web.sh` も WebGPU 用の特別な起動フラグは付けない。
 - 状態ベクトルの計算と円描画は WebGPU（Compute/Fragment）で行い、CPU への読み戻しはテスト時のみ。
 - UI fonts are unified on Geist: `FontFamily::Proportional` starts with Geist Sans Regular, `FontFamily::Monospace` starts with Geist Mono Regular, `QniJapaneseFallback-Regular.otf` (CP932/JIS subset generated from Noto Sans CJK JP Regular, SIL OFL 1.1) provides Japanese fallback for circuit names, and Hack remains only as the final fallback for glyphs such as `⟨` / `⟩`.

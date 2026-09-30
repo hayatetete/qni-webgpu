@@ -9,6 +9,8 @@ import {
   sampleCanvasPixels,
   UI_CONSTANTS,
   waitForStartupReady,
+  pollForValue,
+  waitForValue,
 } from './support/web-spec-helpers'
 
 const GATE_SIZE = UI_CONSTANTS.GATE_SIZE
@@ -24,20 +26,20 @@ const readCircuitColsFromHash = (url: string): unknown[] => JSON.parse(decodeURI
 
 const waitForHashCols = async (page: { url(): string; waitForTimeout(ms: number): Promise<void> }, expected: unknown[]): Promise<void> => {
   const expectedJson = JSON.stringify(expected)
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (JSON.stringify(readCircuitColsFromHash(page.url())) === expectedJson) return
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`URL hash columns did not become ${expectedJson}`)
+  await waitForValue(
+    () => Promise.resolve(JSON.stringify(readCircuitColsFromHash(page.url()))),
+    (seen) => seen === expectedJson,
+    `URL hash columns did not become ${expectedJson}`,
+  )
 }
 
 const waitForProbabilityDistributions = async (page: Parameters<typeof readProbabilityDistributions>[0]): Promise<number[]> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const entries = await readProbabilityDistributions(page)
-    if (entries.length > 0) return entries[0].probabilities
-    await page.waitForTimeout(50)
-  }
-  throw new Error('Probability probabilities did not become available')
+  const result = await waitForValue(
+    () => readProbabilityDistributions(page),
+    (entries) => entries.length > 0,
+    'Probability probabilities did not become available',
+  )
+  return result[0].probabilities
 }
 
 const selectedColumnReadoutEvidence = async (page: Parameters<typeof readProbabilityDistributions>[0]) => {
@@ -90,51 +92,50 @@ const waitForProbabilityPercentLabelEvidence = async (
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
   const gateHeight = (span - 1) * LINE_GAP + GATE_SIZE
-  let last = { textPixels: 0, bboxHeight: 0 }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    last = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, gateHeight }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { textPixels: 0, bboxHeight: 0 }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        let textPixels = 0
-        let minY = Number.POSITIVE_INFINITY
-        let maxY = Number.NEGATIVE_INFINITY
-        for (let y = Math.floor((gateTop + 4) * scaleY); y <= Math.floor((gateTop + gateHeight - 4) * scaleY); y += 1) {
-          for (let x = Math.floor((gateLeft + 8) * scaleX); x <= Math.floor((gateLeft + 31) * scaleX); x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (r < 150 && g < 150 && b < 150) {
-              textPixels += 1
-              minY = Math.min(minY, y)
-              maxY = Math.max(maxY, y)
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, gateHeight }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return { textPixels: 0, bboxHeight: 0 }
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          let textPixels = 0
+          let minY = Number.POSITIVE_INFINITY
+          let maxY = Number.NEGATIVE_INFINITY
+          for (let y = Math.floor((gateTop + 4) * scaleY); y <= Math.floor((gateTop + gateHeight - 4) * scaleY); y += 1) {
+            for (let x = Math.floor((gateLeft + 8) * scaleX); x <= Math.floor((gateLeft + 31) * scaleX); x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (r < 150 && g < 150 && b < 150) {
+                textPixels += 1
+                minY = Math.min(minY, y)
+                maxY = Math.max(maxY, y)
+              }
             }
           }
-        }
-        return {
-          textPixels,
-          bboxHeight: Number.isFinite(minY) ? Math.round((maxY - minY + 1) / scaleY) : 0,
-        }
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, gateHeight },
-    )
-    if (last.textPixels > 32) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+          return {
+            textPixels,
+            bboxHeight: Number.isFinite(minY) ? Math.round((maxY - minY + 1) / scaleY) : 0,
+          }
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, gateHeight },
+      )
+    },
+    (last) => last.textPixels > 32
+  )
 }
 
 const waitForProbabilityDecimalPointEvidence = async (
@@ -143,45 +144,41 @@ const waitForProbabilityDecimalPointEvidence = async (
 ): Promise<{ decimalPixels: number }> => {
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
-  let last = { decimalPixels: 0 }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    last = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { decimalPixels: 0 }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        let decimalPixels = 0
-        for (let y = Math.floor((gateTop + 8) * scaleY); y <= Math.floor((gateTop + 19) * scaleY); y += 1) {
-          // 50.0% text is right-aligned; with the spec 3px dot width, the
-          // decimal cell sits at gateLeft+21..24. Keep the probe inside that
-          // cell so the following 0 glyph cannot satisfy this check.
-          for (let x = Math.floor((gateLeft + 22.0) * scaleX); x <= Math.floor((gateLeft + 23.8) * scaleX); x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (r < 120 && g < 120 && b < 120) decimalPixels += 1
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return { decimalPixels: 0 }
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          let decimalPixels = 0
+          for (let y = Math.floor((gateTop + 8) * scaleY); y <= Math.floor((gateTop + 19) * scaleY); y += 1) {
+            for (let x = Math.floor((gateLeft + 22.0) * scaleX); x <= Math.floor((gateLeft + 23.8) * scaleX); x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (r < 120 && g < 120 && b < 120) decimalPixels += 1
+            }
           }
-        }
-        return { decimalPixels }
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop },
-    )
-    if (last.decimalPixels > 0) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+          return { decimalPixels }
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop },
+      )
+    },
+    (last) => last.decimalPixels > 0
+  )
 }
 
 const waitForProbabilityBarPixels = async (
@@ -190,52 +187,50 @@ const waitForProbabilityBarPixels = async (
 ): Promise<{ barIsBlue: boolean; edgeIsBlue400: boolean; emptyIsPaper: boolean }> => {
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
-  let last = { barIsBlue: false, edgeIsBlue400: false, emptyIsPaper: false }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    last = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { barIsBlue: false, edgeIsBlue400: false, emptyIsPaper: false }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const x0 = Math.floor((gateLeft + 2) * scaleX)
-        const x1 = Math.floor((gateLeft + 38) * scaleX)
-        const y0 = Math.floor((gateTop + 2) * scaleY)
-        const y1 = Math.floor((gateTop + 38) * scaleY)
-        let blue = 0
-        let edge = 0
-        let paper = 0
-        for (let y = y0; y <= y1; y += 1) {
-          for (let x = x0; x <= x1; x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 16) blue += 1
-            if (Math.abs(r - 67) + Math.abs(g - 133) + Math.abs(b - 190) < 32) edge += 1
-            if (Math.abs(r - 255) + Math.abs(g - 252) + Math.abs(b - 240) < 16) paper += 1
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return { barIsBlue: false, edgeIsBlue400: false, emptyIsPaper: false }
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          const x0 = Math.floor((gateLeft + 2) * scaleX)
+          const x1 = Math.floor((gateLeft + 38) * scaleX)
+          const y0 = Math.floor((gateTop + 2) * scaleY)
+          const y1 = Math.floor((gateTop + 38) * scaleY)
+          let blue = 0
+          let edge = 0
+          let paper = 0
+          for (let y = y0; y <= y1; y += 1) {
+            for (let x = x0; x <= x1; x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 16) blue += 1
+              if (Math.abs(r - 67) + Math.abs(g - 133) + Math.abs(b - 190) < 32) edge += 1
+              if (Math.abs(r - 255) + Math.abs(g - 252) + Math.abs(b - 240) < 16) paper += 1
+            }
           }
-        }
-        return { barIsBlue: blue > 80, edgeIsBlue400: edge > 8, emptyIsPaper: paper > 80 }
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop },
-    )
-    if (last.barIsBlue && last.edgeIsBlue400 && last.emptyIsPaper) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+          return { barIsBlue: blue > 80, edgeIsBlue400: edge > 8, emptyIsPaper: paper > 80 }
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop },
+      )
+    },
+    (last) => last.barIsBlue && last.edgeIsBlue400 && last.emptyIsPaper
+  )
 }
-
 const readoutVisualStabilityEvidence = async (
   page: Parameters<typeof sampleCanvasPixels>[0],
   canvas: Parameters<typeof sampleCanvasPixels>[1],
@@ -309,75 +304,73 @@ const waitForProbabilityHoverEvidence = async (
 ): Promise<{ rowBorder: boolean; popupText: boolean; popupDivider: boolean }> => {
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const selectedRowTop = EGUI_PANEL_MARGIN + LINE_Y
-  let last = { rowBorder: false, popupText: false, popupDivider: false }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    const pixels = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, selectedRowTop }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { rowBorder: false, popupText: false, popupDivider: false }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const countMatching = (
-          x0Css: number,
-          x1Css: number,
-          y0Css: number,
-          y1Css: number,
-          matches: (rgb: [number, number, number]) => boolean,
-        ) => {
-          let count = 0
-          const x0 = Math.floor(x0Css * scaleX)
-          const x1 = Math.floor(x1Css * scaleX)
-          const y0 = Math.floor(y0Css * scaleY)
-          const y1 = Math.floor(y1Css * scaleY)
-          for (let y = y0; y <= y1; y += 1) {
-            for (let x = x0; x <= x1; x += 1) {
-              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-              if (matches([r, g, b])) count += 1
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, selectedRowTop }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return { rowBorder: false, popupText: false, popupDivider: false }
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          const countMatching = (
+            x0Css: number,
+            x1Css: number,
+            y0Css: number,
+            y1Css: number,
+            matches: (rgb: [number, number, number]) => boolean,
+          ) => {
+            let count = 0
+            const x0 = Math.floor(x0Css * scaleX)
+            const x1 = Math.floor(x1Css * scaleX)
+            const y0 = Math.floor(y0Css * scaleY)
+            const y1 = Math.floor(y1Css * scaleY)
+            for (let y = y0; y <= y1; y += 1) {
+              for (let x = x0; x <= x1; x += 1) {
+                const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+                if (matches([r, g, b])) count += 1
+              }
             }
+            return count
           }
-          return count
-        }
-        let dividerRowMax = 0
-        for (let y = Math.floor(250 * scaleY); y <= Math.floor(305 * scaleY); y += 1) {
-          let row = 0
-          for (let x = Math.floor(270 * scaleX); x <= Math.floor(430 * scaleX); x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (Math.abs(r - 218) + Math.abs(g - 216) + Math.abs(b - 206) < 24) row += 1
+          let dividerRowMax = 0
+          for (let y = Math.floor(250 * scaleY); y <= Math.floor(305 * scaleY); y += 1) {
+            let row = 0
+            for (let x = Math.floor(270 * scaleX); x <= Math.floor(430 * scaleX); x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (Math.abs(r - 218) + Math.abs(g - 216) + Math.abs(b - 206) < 24) row += 1
+            }
+            dividerRowMax = Math.max(dividerRowMax, row)
           }
-          dividerRowMax = Math.max(dividerRowMax, row)
-        }
-        return {
-          rowBorder: countMatching(
-            gateLeft,
-            gateLeft + 40,
-            selectedRowTop,
-            selectedRowTop + 20,
-            ([r, g, b]) => Math.abs(r - 139) + Math.abs(g - 126) + Math.abs(b - 200) < 48,
-          ) > 40,
-          popupText: countMatching(226, 450, 208, 336, ([r, g, b]) => r < 80 && g < 80 && b < 80) > 40,
-          popupDivider: dividerRowMax > 64,
-        }
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, selectedRowTop },
-    )
-    last = pixels
-    if (last.rowBorder && last.popupText && last.popupDivider) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+          return {
+            rowBorder: countMatching(
+              gateLeft,
+              gateLeft + 40,
+              selectedRowTop,
+              selectedRowTop + 20,
+              ([r, g, b]) => Math.abs(r - 139) + Math.abs(g - 126) + Math.abs(b - 200) < 48,
+            ) > 40,
+            popupText: countMatching(226, 450, 208, 336, ([r, g, b]) => r < 80 && g < 80 && b < 80) > 40,
+            popupDivider: dividerRowMax > 64,
+          }
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, selectedRowTop },
+      )
+    },
+    (last) => last.rowBorder && last.popupText && last.popupDivider
+  )
 }
 
 const waitForDenseProbabilityHoverLinePixels = async (
@@ -388,42 +381,41 @@ const waitForDenseProbabilityHoverLinePixels = async (
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
   const hoverY = gateTop + localY
-  let last = 0
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    last = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, hoverY, gateSize }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return 0
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        let count = 0
-        for (let y = Math.floor((hoverY - 2) * scaleY); y <= Math.ceil((hoverY + 2) * scaleY); y += 1) {
-          for (let x = Math.floor((gateLeft + 4) * scaleX); x <= Math.ceil((gateLeft + gateSize - 4) * scaleX); x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (Math.abs(r - 139) + Math.abs(g - 126) + Math.abs(b - 200) < 64) count += 1
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, hoverY, gateSize }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return 0
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          let count = 0
+          for (let y = Math.floor((hoverY - 2) * scaleY); y <= Math.ceil((hoverY + 2) * scaleY); y += 1) {
+            for (let x = Math.floor((gateLeft + 4) * scaleX); x <= Math.ceil((gateLeft + gateSize - 4) * scaleX); x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (Math.abs(r - 139) + Math.abs(g - 126) + Math.abs(b - 200) < 64) count += 1
+            }
           }
-        }
-        return count
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, hoverY, gateSize: GATE_SIZE },
-    )
-    if (last > DENSE_PROBABILITY_HOVER_LINE_MIN_PIXELS) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+          return count
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, hoverY, gateSize: GATE_SIZE },
+      )
+    },
+    (last) => last > DENSE_PROBABILITY_HOVER_LINE_MIN_PIXELS
+  )
 }
 
 const waitForScrolledProbabilityPopupEvidence = async (
@@ -436,112 +428,105 @@ const waitForScrolledProbabilityPopupEvidence = async (
   valuesRightAligned: boolean
   rowsAligned: boolean
 }> => {
-  let last = {
-    popupAbovePalette: false,
-    popupValueText: false,
-    ketCentered: false,
-    valuesRightAligned: false,
-    rowsAligned: false,
-  }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    last = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) {
+  return await pollForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) {
+            return {
+              popupAbovePalette: false,
+              popupValueText: false,
+              ketCentered: false,
+              valuesRightAligned: false,
+              rowsAligned: false,
+            }
+          }
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          const countMatching = (
+            x0Css: number,
+            x1Css: number,
+            y0Css: number,
+            y1Css: number,
+            matches: (rgb: [number, number, number]) => boolean,
+          ) => {
+            let count = 0
+            const x0 = Math.floor(x0Css * scaleX)
+            const x1 = Math.floor(x1Css * scaleX)
+            const y0 = Math.floor(y0Css * scaleY)
+            const y1 = Math.floor(y1Css * scaleY)
+            for (let y = y0; y <= y1; y += 1) {
+              for (let x = x0; x <= x1; x += 1) {
+                const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+                if (matches([r, g, b])) count += 1
+              }
+            }
+            return count
+          }
+          const dark = ([r, g, b]: [number, number, number]) => r < 95 && g < 95 && b < 95
+          const teal = ([r, g, b]: [number, number, number]) => Math.abs(r - 60) + Math.abs(g - 171) + Math.abs(b - 162) < 72
+          const textInk = ([r, g, b]: [number, number, number]) => r < 150 && g < 150 && b < 150
+          const textBounds = (x0Css: number, x1Css: number, y0Css: number, y1Css: number) => {
+            let count = 0
+            let minX = Number.POSITIVE_INFINITY
+            let maxX = Number.NEGATIVE_INFINITY
+            let minY = Number.POSITIVE_INFINITY
+            let maxY = Number.NEGATIVE_INFINITY
+            const x0 = Math.floor(x0Css * scaleX)
+            const x1 = Math.floor(x1Css * scaleX)
+            const y0 = Math.floor(y0Css * scaleY)
+            const y1 = Math.floor(y1Css * scaleY)
+            for (let y = y0; y <= y1; y += 1) {
+              for (let x = x0; x <= x1; x += 1) {
+                const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+                if (!textInk([r, g, b])) continue
+                count += 1
+                minX = Math.min(minX, x / scaleX)
+                maxX = Math.max(maxX, x / scaleX)
+                minY = Math.min(minY, y / scaleY)
+                maxY = Math.max(maxY, y / scaleY)
+              }
+            }
+            return { count, minX, maxX, minY, maxY }
+          }
+          const hasBounds = (b: ReturnType<typeof textBounds>) => b.count > 4
+          const centerY = (b: ReturnType<typeof textBounds>) => (b.minY + b.maxY) / 2
+          const paletteTealThroughPopup = countMatching(270, 430, 150, 196, teal)
+          const centeredKet = countMatching(320, 380, 155, 180, dark)
+          const leftKet = countMatching(270, 315, 155, 180, dark)
+          const rawLabel = textBounds(270, 306, 220, 242)
+          const rawValue = textBounds(318, 430, 220, 242)
+          const logLabel = textBounds(270, 306, 240, 264)
+          const logValue = textBounds(318, 430, 240, 264)
           return {
-            popupAbovePalette: false,
-            popupValueText: false,
-            ketCentered: false,
-            valuesRightAligned: false,
-            rowsAligned: false,
+            popupAbovePalette: paletteTealThroughPopup < 8,
+            popupValueText: rawValue.count + logValue.count > 24,
+            ketCentered: centeredKet > leftKet + 8,
+            valuesRightAligned: hasBounds(rawValue) && hasBounds(logValue) && Math.abs(rawValue.maxX - logValue.maxX) <= 4,
+            rowsAligned: hasBounds(rawLabel) && hasBounds(rawValue) && hasBounds(logLabel) && hasBounds(logValue)
+              && Math.abs(centerY(rawLabel) - centerY(rawValue)) <= 4
+              && Math.abs(centerY(logLabel) - centerY(logValue)) <= 4,
           }
-        }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const countMatching = (
-          x0Css: number,
-          x1Css: number,
-          y0Css: number,
-          y1Css: number,
-          matches: (rgb: [number, number, number]) => boolean,
-        ) => {
-          let count = 0
-          const x0 = Math.floor(x0Css * scaleX)
-          const x1 = Math.floor(x1Css * scaleX)
-          const y0 = Math.floor(y0Css * scaleY)
-          const y1 = Math.floor(y1Css * scaleY)
-          for (let y = y0; y <= y1; y += 1) {
-            for (let x = x0; x <= x1; x += 1) {
-              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-              if (matches([r, g, b])) count += 1
-            }
-          }
-          return count
-        }
-        const dark = ([r, g, b]: [number, number, number]) => r < 95 && g < 95 && b < 95
-        const teal = ([r, g, b]: [number, number, number]) => Math.abs(r - 60) + Math.abs(g - 171) + Math.abs(b - 162) < 72
-        const textInk = ([r, g, b]: [number, number, number]) => r < 150 && g < 150 && b < 150
-        const textBounds = (x0Css: number, x1Css: number, y0Css: number, y1Css: number) => {
-          let count = 0
-          let minX = Number.POSITIVE_INFINITY
-          let maxX = Number.NEGATIVE_INFINITY
-          let minY = Number.POSITIVE_INFINITY
-          let maxY = Number.NEGATIVE_INFINITY
-          const x0 = Math.floor(x0Css * scaleX)
-          const x1 = Math.floor(x1Css * scaleX)
-          const y0 = Math.floor(y0Css * scaleY)
-          const y1 = Math.floor(y1Css * scaleY)
-          for (let y = y0; y <= y1; y += 1) {
-            for (let x = x0; x <= x1; x += 1) {
-              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-              if (!textInk([r, g, b])) continue
-              count += 1
-              minX = Math.min(minX, x / scaleX)
-              maxX = Math.max(maxX, x / scaleX)
-              minY = Math.min(minY, y / scaleY)
-              maxY = Math.max(maxY, y / scaleY)
-            }
-          }
-          return { count, minX, maxX, minY, maxY }
-        }
-        const hasBounds = (b: ReturnType<typeof textBounds>) => b.count > 4
-        const centerY = (b: ReturnType<typeof textBounds>) => (b.minY + b.maxY) / 2
-        const paletteTealThroughPopup = countMatching(270, 430, 150, 196, teal)
-        const centeredKet = countMatching(320, 380, 155, 180, dark)
-        const leftKet = countMatching(270, 315, 155, 180, dark)
-        const rawLabel = textBounds(270, 306, 220, 242)
-        const rawValue = textBounds(318, 430, 220, 242)
-        const logLabel = textBounds(270, 306, 240, 264)
-        const logValue = textBounds(318, 430, 240, 264)
-        return {
-          popupAbovePalette: paletteTealThroughPopup < 8,
-          popupValueText: rawValue.count + logValue.count > 24,
-          ketCentered: centeredKet > leftKet + 8,
-          valuesRightAligned: hasBounds(rawValue) && hasBounds(logValue) && Math.abs(rawValue.maxX - logValue.maxX) <= 4,
-          rowsAligned: hasBounds(rawLabel) && hasBounds(rawValue) && hasBounds(logLabel) && hasBounds(logValue)
-            && Math.abs(centerY(rawLabel) - centerY(rawValue)) <= 4
-            && Math.abs(centerY(logLabel) - centerY(logValue)) <= 4,
-        }
-      },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height },
-    )
-    if (last.popupAbovePalette && last.popupValueText && last.ketCentered && last.valuesRightAligned && last.rowsAligned) return last
-    await page.waitForTimeout(50)
-  }
-  return last
+        },
+        { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height },
+      )
+    },
+    (last) => last.popupAbovePalette && last.popupValueText && last.ketCentered && last.valuesRightAligned && last.rowsAligned
+  )
 }
 
 test('Probability display renders GPU probabilities and serializes the Quirk token', async ({ page }) => {
@@ -641,50 +626,56 @@ const waitForRowsBelowProbabilitySpike = async (
 ): Promise<{ belowSpikeBarPixels: number }> => {
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
-  const rowH = ((5 - 1) * LINE_GAP + GATE_SIZE) / 32
   const gateHeight = (5 - 1) * LINE_GAP + GATE_SIZE
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    const evidence = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateHeight, gateSize }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { spikeBarPixels: 0, belowSpikeBarPixels: 0 }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const isBarBlue = (x: number, y: number): boolean => {
-          const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-          return Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 24
-        }
-        const xLo = Math.floor((gateLeft + 1) * scaleX)
-        const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
-        let spikeBarPixels = 0
-        const spikeYLo = Math.floor((gateTop + 5 * rowH + 1) * scaleY)
-        const spikeYHi = Math.floor((gateTop + 6 * rowH - 1) * scaleY)
-        for (let y = spikeYLo; y <= spikeYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBarBlue(x, y)) spikeBarPixels += 1
-        let belowSpikeBarPixels = 0
-        const belowYLo = Math.floor((gateTop + 6 * rowH) * scaleY)
-        const belowYHi = Math.floor((gateTop + gateHeight - 1) * scaleY)
-        for (let y = belowYLo; y <= belowYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBarBlue(x, y)) belowSpikeBarPixels += 1
-        return { spikeBarPixels, belowSpikeBarPixels }
+  const rowH = gateHeight / 32
+  try {
+    const evidence = await waitForValue(
+      async () => {
+        const screenshot = await canvas.screenshot({ type: 'png' })
+        const box = await canvas.boundingBox()
+        if (!box) throw new Error('expected egui canvas to be measurable')
+        return await page.evaluate(
+          async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateHeight, gateSize }) => {
+            const img = new Image()
+            img.src = `data:image/png;base64,${base64}`
+            await new Promise((resolve, reject) => {
+              img.onload = () => resolve(null)
+              img.onerror = () => reject(new Error('Failed to decode screenshot'))
+            })
+            const c = document.createElement('canvas')
+            c.width = img.width
+            c.height = img.height
+            const ctx = c.getContext('2d', { willReadFrequently: true })
+            if (!ctx) return { spikeBarPixels: 0, belowSpikeBarPixels: 0 }
+            ctx.drawImage(img, 0, 0)
+            const scaleX = img.width / cssWidth
+            const scaleY = img.height / cssHeight
+            const isBarBlue = (x: number, y: number): boolean => {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              return Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 24
+            }
+            const xLo = Math.floor((gateLeft + 1) * scaleX)
+            const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
+            let spikeBarPixels = 0
+            const spikeYLo = Math.floor((gateTop + 5 * rowH + 1) * scaleY)
+            const spikeYHi = Math.floor((gateTop + 6 * rowH - 1) * scaleY)
+            for (let y = spikeYLo; y <= spikeYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBarBlue(x, y)) spikeBarPixels += 1
+            let belowSpikeBarPixels = 0
+            const belowYLo = Math.floor((gateTop + 6 * rowH) * scaleY)
+            const belowYHi = Math.floor((gateTop + gateHeight - 1) * scaleY)
+            for (let y = belowYLo; y <= belowYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBarBlue(x, y)) belowSpikeBarPixels += 1
+            return { spikeBarPixels, belowSpikeBarPixels }
+          },
+          { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateHeight, gateSize: GATE_SIZE },
+        )
       },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateHeight, gateSize: GATE_SIZE },
+      (evidence) => evidence.spikeBarPixels > 40,
+      'Probability5 value-5 bar never rendered; cannot evaluate rows below the spike',
     )
-    if (evidence.spikeBarPixels > 40) return { belowSpikeBarPixels: evidence.belowSpikeBarPixels }
-    await page.waitForTimeout(50)
+    return { belowSpikeBarPixels: evidence.belowSpikeBarPixels }
+  } catch (err) {
+    throw new Error('Probability5 value-5 bar never rendered; cannot evaluate rows below the spike')
   }
-  throw new Error('Probability5 value-5 bar never rendered; cannot evaluate rows below the spike')
 }
 
 test('Probability5 bar leaves no seam nub in the rows below the spike', async ({ page }) => {
@@ -729,56 +720,62 @@ const waitForLogHintBelowFullBar = async (
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
   const rowH = ((5 - 1) * LINE_GAP + GATE_SIZE) / 32
   const gateHeight = (5 - 1) * LINE_GAP + GATE_SIZE
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    const evidence = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateHeight, gateSize, logHint }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { barPixels: 0, logHintPixelsBelowBar: 0 }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const px = (x: number, y: number): [number, number, number] => {
-          const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-          return [r, g, b]
-        }
-        const isBar = (x: number, y: number): boolean => {
-          const [r, g, b] = px(x, y)
-          return Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 24
-        }
-        const isLogHint = (x: number, y: number): boolean => {
-          const [r, g, b] = px(x, y)
-          return Math.abs(r - logHint[0]) + Math.abs(g - logHint[1]) + Math.abs(b - logHint[2]) < 24
-        }
-        const xLo = Math.floor((gateLeft + 1) * scaleX)
-        const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
-        let barPixels = 0
-        const spikeYLo = Math.floor((gateTop + 5 * rowH + 1) * scaleY)
-        const spikeYHi = Math.floor((gateTop + 6 * rowH - 1) * scaleY)
-        for (let y = spikeYLo; y <= spikeYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBar(x, y)) barPixels += 1
-        let logHintPixelsBelowBar = 0
-        const belowYLo = Math.floor((gateTop + 6 * rowH) * scaleY)
-        const belowYHi = Math.floor((gateTop + gateHeight - 1) * scaleY)
-        for (let y = belowYLo; y <= belowYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isLogHint(x, y)) logHintPixelsBelowBar += 1
-        return { barPixels, logHintPixelsBelowBar }
+  try {
+    const evidence = await waitForValue(
+      async () => {
+        const screenshot = await canvas.screenshot({ type: 'png' })
+        const box = await canvas.boundingBox()
+        if (!box) throw new Error('expected egui canvas to be measurable')
+        return await page.evaluate(
+          async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateHeight, gateSize, logHint }) => {
+            const img = new Image()
+            img.src = `data:image/png;base64,${base64}`
+            await new Promise((resolve, reject) => {
+              img.onload = () => resolve(null)
+              img.onerror = () => reject(new Error('Failed to decode screenshot'))
+            })
+            const c = document.createElement('canvas')
+            c.width = img.width
+            c.height = img.height
+            const ctx = c.getContext('2d', { willReadFrequently: true })
+            if (!ctx) return { barPixels: 0, logHintPixelsBelowBar: 0 }
+            ctx.drawImage(img, 0, 0)
+            const scaleX = img.width / cssWidth
+            const scaleY = img.height / cssHeight
+            const px = (x: number, y: number): [number, number, number] => {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              return [r, g, b]
+            }
+            const isBar = (x: number, y: number): boolean => {
+              const [r, g, b] = px(x, y)
+              return Math.abs(r - 146) + Math.abs(g - 191) + Math.abs(b - 219) < 24
+            }
+            const isLogHint = (x: number, y: number): boolean => {
+              const [r, g, b] = px(x, y)
+              return Math.abs(r - logHint[0]) + Math.abs(g - logHint[1]) + Math.abs(b - logHint[2]) < 24
+            }
+            const xLo = Math.floor((gateLeft + 1) * scaleX)
+            const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
+            let barPixels = 0
+            const spikeYLo = Math.floor((gateTop + 5 * rowH + 1) * scaleY)
+            const spikeYHi = Math.floor((gateTop + 6 * rowH - 1) * scaleY)
+            for (let y = spikeYLo; y <= spikeYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isBar(x, y)) barPixels += 1
+            let logHintPixelsBelowBar = 0
+            const belowYLo = Math.floor((gateTop + 6 * rowH) * scaleY)
+            const belowYHi = Math.floor((gateTop + gateHeight - 1) * scaleY)
+            for (let y = belowYLo; y <= belowYHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isLogHint(x, y)) logHintPixelsBelowBar += 1
+            return { barPixels, logHintPixelsBelowBar }
+          },
+          { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateHeight, gateSize: GATE_SIZE, logHint: FLEXOKI_TX_3 },
+        )
       },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateHeight, gateSize: GATE_SIZE, logHint: FLEXOKI_TX_3 },
+      (evidence) => evidence.barPixels > 40,
+      'Probability5 value-5 bar never rendered; cannot evaluate log hints below the bar',
     )
-    if (evidence.barPixels > 40) return { logHintPixelsBelowBar: evidence.logHintPixelsBelowBar }
-    await page.waitForTimeout(50)
+    return { logHintPixelsBelowBar: evidence.logHintPixelsBelowBar }
+  } catch (err) {
+    throw new Error('Probability5 value-5 bar never rendered; cannot evaluate log hints below the bar')
   }
-  throw new Error('Probability5 value-5 bar never rendered; cannot evaluate log hints below the bar')
 }
 
 test('Probability5 draws no log hint for the zero-probability rows below a full bar', async ({ page }) => {
@@ -805,49 +802,53 @@ const waitForSeveredZeroRowLogHint = async (
   const gateLeft = EGUI_PANEL_MARGIN + LINE_LEFT_OFFSET + GATE_SIZE + SLOT_SPACING - GATE_SIZE / 2
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
   const rowH = ((5 - 1) * LINE_GAP + GATE_SIZE) / 32
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error('expected egui canvas to be measurable')
-    const evidence = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateSize, logHint }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return { tickPixels: 0, zeroRowLogHintPixels: 0 }
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        const isLogHint = (x: number, y: number): boolean => {
-          const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-          return Math.abs(r - logHint[0]) + Math.abs(g - logHint[1]) + Math.abs(b - logHint[2]) < 24
-        }
-        const xLo = Math.floor((gateLeft + 1) * scaleX)
-        const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
-        // includeTop catches the connector painted at the row's top boundary
-        // (pixel_row_top), which is exactly where the old full-width connector ran.
-        const countRow = (row: number, includeTop: boolean): number => {
-          const yLo = Math.floor((gateTop + row * rowH + (includeTop ? 0 : 1)) * scaleY)
-          const yHi = Math.floor((gateTop + (row + 1) * rowH - 1) * scaleY)
-          let n = 0
-          for (let y = yLo; y <= yHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isLogHint(x, y)) n += 1
-          return n
-        }
-        return { tickPixels: countRow(0, false) + countRow(2, false), zeroRowLogHintPixels: countRow(1, true) }
+  try {
+    const evidence = await waitForValue(
+      async () => {
+        const screenshot = await canvas.screenshot({ type: 'png' })
+        const box = await canvas.boundingBox()
+        if (!box) throw new Error('expected egui canvas to be measurable')
+        return await page.evaluate(
+          async ({ base64, cssWidth, cssHeight, gateLeft, gateTop, rowH, gateSize, logHint }) => {
+            const img = new Image()
+            img.src = `data:image/png;base64,${base64}`
+            await new Promise((resolve, reject) => {
+              img.onload = () => resolve(null)
+              img.onerror = () => reject(new Error('Failed to decode screenshot'))
+            })
+            const c = document.createElement('canvas')
+            c.width = img.width
+            c.height = img.height
+            const ctx = c.getContext('2d', { willReadFrequently: true })
+            if (!ctx) return { tickPixels: 0, zeroRowLogHintPixels: 0 }
+            ctx.drawImage(img, 0, 0)
+            const scaleX = img.width / cssWidth
+            const scaleY = img.height / cssHeight
+            const isLogHint = (x: number, y: number): boolean => {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              return Math.abs(r - logHint[0]) + Math.abs(g - logHint[1]) + Math.abs(b - logHint[2]) < 24
+            }
+            const xLo = Math.floor((gateLeft + 1) * scaleX)
+            const xHi = Math.floor((gateLeft + gateSize - 1) * scaleX)
+            const countRow = (row: number, includeTop: boolean): number => {
+              const yLo = Math.floor((gateTop + row * rowH + (includeTop ? 0 : 1)) * scaleY)
+              const yHi = Math.floor((gateTop + (row + 1) * rowH - 1) * scaleY)
+              let n = 0
+              for (let y = yLo; y <= yHi; y += 1) for (let x = xLo; x <= xHi; x += 1) if (isLogHint(x, y)) n += 1
+              return n
+            }
+            return { tickPixels: countRow(0, false) + countRow(2, false), zeroRowLogHintPixels: countRow(1, true) }
+          },
+          { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateSize: GATE_SIZE, logHint: FLEXOKI_TX_3 },
+        )
       },
-      { base64: screenshot.toString('base64'), cssWidth: box.width, cssHeight: box.height, gateLeft, gateTop, rowH, gateSize: GATE_SIZE, logHint: FLEXOKI_TX_3 },
+      (evidence) => evidence.tickPixels > 0,
+      'Probability5 log-hint ticks for the non-zero rows never rendered',
     )
-    if (evidence.tickPixels > 0) return { zeroRowLogHintPixels: evidence.zeroRowLogHintPixels }
-    await page.waitForTimeout(50)
+    return { zeroRowLogHintPixels: evidence.zeroRowLogHintPixels }
+  } catch (err) {
+    throw new Error('Probability5 log-hint ticks for the non-zero rows never rendered')
   }
-  throw new Error('Probability5 log-hint ticks for the non-zero rows never rendered')
 }
 
 test('Probability5 severs the log-hint curve at a zero-probability row between non-zero rows', async ({ page }) => {
@@ -1093,45 +1094,46 @@ test('Probability popup flips left near the browser right edge', async ({ page }
   const gateTop = EGUI_PANEL_MARGIN + LINE_Y - GATE_SIZE / 2
   await page.mouse.move(box.x + gateLeft + GATE_SIZE / 2, box.y + gateTop + 132)
 
-  let leftPopupText = false
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const screenshot = await canvas.screenshot({ type: 'png' })
-    const canvasBox = await canvas.boundingBox()
-    if (!canvasBox) throw new Error('expected egui canvas to be measurable')
-    leftPopupText = await page.evaluate(
-      async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
-        const img = new Image()
-        img.src = `data:image/png;base64,${base64}`
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve(null)
-          img.onerror = () => reject(new Error('Failed to decode screenshot'))
-        })
-        const c = document.createElement('canvas')
-        c.width = img.width
-        c.height = img.height
-        const ctx = c.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return false
-        ctx.drawImage(img, 0, 0)
-        const scaleX = img.width / cssWidth
-        const scaleY = img.height / cssHeight
-        let darkTextPixels = 0
-        const x0 = Math.floor((gateLeft - 260) * scaleX)
-        const x1 = Math.floor((gateLeft - 16) * scaleX)
-        const y0 = Math.floor((gateTop + 70) * scaleY)
-        const y1 = Math.floor((gateTop + 190) * scaleY)
-        for (let y = y0; y <= y1; y += 1) {
-          for (let x = x0; x <= x1; x += 1) {
-            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
-            if (r < 100 && g < 100 && b < 100) darkTextPixels += 1
+  let leftPopupText = await waitForValue(
+    async () => {
+      const screenshot = await canvas.screenshot({ type: 'png' })
+      const canvasBox = await canvas.boundingBox()
+      if (!canvasBox) throw new Error('expected egui canvas to be measurable')
+      return await page.evaluate(
+        async ({ base64, cssWidth, cssHeight, gateLeft, gateTop }) => {
+          const img = new Image()
+          img.src = `data:image/png;base64,${base64}`
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => reject(new Error('Failed to decode screenshot'))
+          })
+          const c = document.createElement('canvas')
+          c.width = img.width
+          c.height = img.height
+          const ctx = c.getContext('2d', { willReadFrequently: true })
+          if (!ctx) return false
+          ctx.drawImage(img, 0, 0)
+          const scaleX = img.width / cssWidth
+          const scaleY = img.height / cssHeight
+          let darkTextPixels = 0
+          const x0 = Math.floor((gateLeft - 260) * scaleX)
+          const x1 = Math.floor((gateLeft - 16) * scaleX)
+          const y0 = Math.floor((gateTop + 70) * scaleY)
+          const y1 = Math.floor((gateTop + 190) * scaleY)
+          for (let y = y0; y <= y1; y += 1) {
+            for (let x = x0; x <= x1; x += 1) {
+              const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+              if (r < 100 && g < 100 && b < 100) darkTextPixels += 1
+            }
           }
-        }
-        return darkTextPixels > 40
-      },
-      { base64: screenshot.toString('base64'), cssWidth: canvasBox.width, cssHeight: canvasBox.height, gateLeft, gateTop },
-    )
-    if (leftPopupText) break
-    await page.waitForTimeout(50)
-  }
+          return darkTextPixels > 40
+        },
+        { base64: screenshot.toString('base64'), cssWidth: canvasBox.width, cssHeight: canvasBox.height, gateLeft, gateTop },
+      )
+    },
+    (result) => result,
+    'Probability popup text did not appear on the left',
+  )
 
   expect(leftPopupText).toBe(true)
 })

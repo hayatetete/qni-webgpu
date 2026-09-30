@@ -70,7 +70,7 @@ test('Apptainer definition builds the same production service contract', async (
   assert.deepEqual({
     usesCudaBase: /From: nvidia\/cuda:12\.6\.1-devel-ubuntu22\.04/.test(def),
     usesBashPostSection: /%post -c \/bin\/bash/.test(def),
-    pinsQiskitAerTag: /git clone --depth 1 -b 0\.15\.1/.test(def),
+    pinsQiskitAerTag: /git clone --depth 1 -b 0\.17\.2/.test(def),
     buildsRelativeWebAssets: /trunk build --release --public-url \.\//.test(def),
     installsEntrypoint: /cp deploy\/docker\/docker-entrypoint\.sh \/usr\/local\/bin\/qni-webgpu-entrypoint/.test(def),
     runscriptUsesEntrypoint: /%runscript[\s\S]*exec \/usr\/local\/bin\/qni-webgpu-entrypoint/.test(def),

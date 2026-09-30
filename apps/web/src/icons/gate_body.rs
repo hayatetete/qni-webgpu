@@ -81,7 +81,7 @@ fn draw_gate_body_with_fill(
         painter.circle_stroke(
             gate_rect.center(),
             radius,
-            egui::Stroke::new(1.5, colors.bloch_sphere_lines),
+            egui::Stroke::new(1.5_f32, colors.bloch_sphere_lines),
         );
     } else if kind != GateKind::Control
         && kind != GateKind::AntiControl
@@ -141,7 +141,7 @@ fn draw_amplitude_preview_body(
     painter.rect_stroke(
         rect,
         egui::CornerRadius::ZERO,
-        egui::Stroke::new(1.0, colors.line),
+        egui::Stroke::new(1.0_f32, colors.line),
         egui::StrokeKind::Inside,
     );
 }
@@ -169,7 +169,7 @@ fn draw_amplitude_palette_icon(painter: &egui::Painter, rect: egui::Rect, colors
     painter.circle_stroke(
         center,
         (disk_radius - 0.5).max(0.0),
-        egui::Stroke::new(1.0, colors.popup_icon),
+        egui::Stroke::new(1.0_f32, colors.popup_icon),
     );
     let tail = egui::vec2(inner_radius, inner_radius) * std::f32::consts::FRAC_1_SQRT_2;
     painter.line_segment(
@@ -191,7 +191,7 @@ fn draw_density_preview_body(
     painter.rect_stroke(
         rect,
         egui::CornerRadius::ZERO,
-        egui::Stroke::new(1.0, colors.line),
+        egui::Stroke::new(1.0_f32, colors.line),
         egui::StrokeKind::Inside,
     );
 }
@@ -225,12 +225,12 @@ pub(crate) fn draw_density_palette_icon(
             painter.circle_stroke(
                 center,
                 (disk_radius - 0.5).max(0.0),
-                egui::Stroke::new(1.0, colors.popup_icon),
+                egui::Stroke::new(1.0_f32, colors.popup_icon),
             );
             if row != col {
                 painter.line_segment(
                     [center, center + egui::vec2(0.0, -outline_radius)],
-                    egui::Stroke::new(1.25, colors.state_needle),
+                    egui::Stroke::new(1.25_f32, colors.state_needle),
                 );
             }
         }
@@ -256,7 +256,7 @@ fn draw_probability_preview_body(painter: &egui::Painter, rect: egui::Rect, colo
             let edge_x = rect.left() + bar_w;
             painter.line_segment(
                 [egui::pos2(edge_x, bar_y), egui::pos2(edge_x, bar_y + row_h)],
-                egui::Stroke::new(1.0, colors.popup_icon),
+                egui::Stroke::new(1.0_f32, colors.popup_icon),
             );
         }
     }
@@ -269,7 +269,7 @@ fn draw_probability_preview_body(painter: &egui::Painter, rect: egui::Rect, colo
                 egui::pos2(rect.left() + rect.width() * start_ratio, y),
                 egui::pos2(rect.right(), y),
             ],
-            egui::Stroke::new(1.0, colors.line),
+            egui::Stroke::new(1.0_f32, colors.line),
         );
     }
     // 回路側の probability display 外周 (`circuit_gates.rs:180` で `colors.line` =
@@ -279,7 +279,7 @@ fn draw_probability_preview_body(painter: &egui::Painter, rect: egui::Rect, colo
     painter.rect_stroke(
         rect,
         egui::CornerRadius::ZERO,
-        egui::Stroke::new(1.0, colors.line),
+        egui::Stroke::new(1.0_f32, colors.line),
         egui::StrokeKind::Inside,
     );
 }

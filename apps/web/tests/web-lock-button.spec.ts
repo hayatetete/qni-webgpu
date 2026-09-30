@@ -5,6 +5,7 @@ import {
   sampleCanvasPixels,
   UI_CONSTANTS,
   waitForStartupReady,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -41,27 +42,24 @@ const snapshot = async (page: Page): Promise<CircuitLibrarySnapshot> => {
   })
   return JSON.parse(raw) as CircuitLibrarySnapshot
 }
-
 const waitForSnapshot = async (
   page: Page,
   predicate: (state: CircuitLibrarySnapshot) => boolean,
   description: string,
 ): Promise<CircuitLibrarySnapshot> => {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const state = await snapshot(page)
-    if (predicate(state)) return state
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for ${description}`)
+  return await waitForValue(
+    () => snapshot(page),
+    predicate,
+    `timed out waiting for ${description}`,
+  )
 }
 
 const waitForHashPayload = async (page: Page, expected: string): Promise<void> => {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const payload = await page.evaluate(() => decodeURIComponent(window.location.hash.slice(1)))
-    if (payload === expected) return
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for URL hash payload ${expected}`)
+  await waitForValue(
+    () => page.evaluate(() => decodeURIComponent(window.location.hash.slice(1))),
+    (payload) => payload === expected,
+    `timed out waiting for URL hash payload ${expected}`,
+  )
 }
 
 const canvasBox = async (page: Page) => {
@@ -86,28 +84,34 @@ const hoverSnapshot = async (page: Page): Promise<HoverSnapshot> => {
 }
 
 const waitForHoverStep = async (page: Page, expected: number): Promise<HoverSnapshot> => {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const snapshot = await hoverSnapshot(page)
-    if (snapshot.hoveredStep === expected) return snapshot
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`hoveredStep did not become ${expected}`)
+  return await waitForValue(
+    () => hoverSnapshot(page),
+    (snapshot) => snapshot.hoveredStep === expected,
+    `hoveredStep did not become ${expected}`,
+  )
 }
 
 const waitForCanvasBackgroundPixel = async (page: Page, point: { x: number; y: number }): Promise<CanvasPixel> => {
   const canvas = page.locator('#egui-canvas')
   let lastPixel: CanvasPixel | null = null
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const pixels = await sampleCanvasPixels(page, canvas, [{ name: 'probe', x: point.x, y: point.y }])
-    const pixel = pixels.probe
-    if (pixel[3] > 0) {
-      lastPixel = pixel
-      if (pixelRgbDistance(pixel, CANVAS_BACKGROUND) < 16) return pixel
-    }
-    await page.waitForTimeout(50)
+
+  try {
+    return await waitForValue(
+      async () => {
+        const pixels = await sampleCanvasPixels(page, canvas, [{ name: 'probe', x: point.x, y: point.y }])
+        const p = pixels.probe
+        if (p[3] > 0) {
+          lastPixel = p
+        }
+        return p
+      },
+      (p) => p[3] > 0 && pixelRgbDistance(p, CANVAS_BACKGROUND) < 16,
+      'canvas probe did not match background color',
+    )
+  } catch (error) {
+    if (lastPixel) return lastPixel
+    throw new Error('canvas probe did not produce an opaque pixel')
   }
-  if (lastPixel) return lastPixel
-  throw new Error('canvas probe did not produce an opaque pixel')
 }
 
 const clickToolbarButton = async (page: Page, key: string): Promise<void> => {
@@ -241,11 +245,19 @@ test('locked active circuit does not paint a copy selection frame', async ({ pag
 })
 
 test('locking a My circuit guards runtime URL apply', async ({ page }) => {
+  const initialLockButton = await toolbarGeometry(page, '__qniToolbarLockGeometryJson')
   await seedLibrary(page, {
     entries: [{ id: 'mine', name: 'Mine', circuit_json: H_JSON, updated_at: 1, origin: { kind: 'user', locked: false } }],
     active_id: 'mine',
   })
   await waitForSnapshot(page, (state) => state.active_locked === false, 'unlocked My active')
+  // ライブラリーのスナップショットはツールバー再描画より先に更新される。
+  // 名前が短くなったあとのボタン座標を待たないと、古い座標で空白を押す。
+  await waitForValue(
+    () => toolbarGeometry(page, '__qniToolbarLockGeometryJson'),
+    (button) => Math.abs(button.left - initialLockButton.left) > 1,
+    'toolbar layout after switching to Mine',
+  )
 
   await clickToolbarButton(page, '__qniToolbarLockGeometryJson')
   await waitForSnapshot(page, (state) => state.active_locked === true, 'My circuit locked')

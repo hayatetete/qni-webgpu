@@ -280,7 +280,7 @@ pub fn handle_mouse_up(state: &mut AppState, x: u16, y: u16, area: Rect) {
         changed = true;
     } else if let Some((row, slot)) = state
         .hovered_row
-        .and_then(|row| state.hovered_slot.map(|slot| (row, slot)))
+        .zip(state.hovered_slot)
         .or_else(|| hit_test_circuit_slot(x, y, area, qubit_count(state)))
     {
         state.placed[row][slot] = Some(dragging.gate);

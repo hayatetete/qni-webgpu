@@ -68,7 +68,7 @@ impl QniApp {
             } else {
                 colors.line
             };
-            painter.line_segment([start, end], egui::Stroke::new(2.0, line_color));
+            painter.line_segment([start, end], egui::Stroke::new(2.0_f32, line_color));
         }
 
         // Step-preview vertical bars at the right edge of the
@@ -94,7 +94,7 @@ impl QniApp {
                         egui::pos2(x, rect.min.y + top),
                         egui::pos2(x, rect.min.y + bot),
                     ],
-                    egui::Stroke::new(3.0, color),
+                    egui::Stroke::new(3.0_f32, color),
                 );
             };
             if let Some(step) = self.breakpoint_step {

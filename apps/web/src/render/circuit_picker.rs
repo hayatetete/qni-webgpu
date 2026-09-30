@@ -293,6 +293,7 @@ impl QniApp {
                         scroll_output.state.offset.y,
                         handle_response.hovered(),
                         self.picker.resize_drag_active(),
+                        self.picker.drag_in_progress(),
                     );
                 });
             });

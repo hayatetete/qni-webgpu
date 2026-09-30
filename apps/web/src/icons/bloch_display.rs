@@ -34,7 +34,7 @@ fn bloch_project(x: f32, y: f32, z: f32) -> (f32, f32) {
 pub(super) fn draw_bloch_sphere(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) * 0.5 - 1.0;
-    let stroke = egui::Stroke::new(1.0, color);
+    let stroke = egui::Stroke::new(1.0_f32, color);
     // Decorative wireframe matches the static SVG in
     // `packages/elements/src/bloch-display-element.ts`:
     //   horizontal x-axis line, vertical z-axis line, NE/SW diagonal y-axis,
@@ -94,7 +94,7 @@ pub(crate) fn draw_bloch_vector(
     if length > 1.0e-3 {
         painter.line_segment(
             [center, tip],
-            egui::Stroke::new(1.5, colors.bloch_vector_line),
+            egui::Stroke::new(1.5_f32, colors.bloch_vector_line),
         );
         let tip_color = bloch_tip_color(vector[2], colors);
         // 8px diameter at base size; add a 1px Flexoki tx outline for the
@@ -103,14 +103,14 @@ pub(crate) fn draw_bloch_vector(
         painter.circle_stroke(
             tip,
             4.0,
-            egui::Stroke::new(1.0, colors.bloch_vector_tip_outline),
+            egui::Stroke::new(1.0_f32, colors.bloch_vector_tip_outline),
         );
     } else {
         painter.circle_filled(tip, 4.0, colors.bloch_vector_zero);
         painter.circle_stroke(
             tip,
             4.0,
-            egui::Stroke::new(1.0, colors.bloch_vector_tip_outline),
+            egui::Stroke::new(1.0_f32, colors.bloch_vector_tip_outline),
         );
     }
 }

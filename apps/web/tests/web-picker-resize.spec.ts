@@ -3,6 +3,7 @@ import {
   pixelRgbDistance,
   sampleCanvasPixels,
   waitForStartupReady,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -38,18 +39,18 @@ const FLEXOKI_PAPER: CanvasPixel = [255, 252, 240, 255]
 const SCROLLBAR_IDLE_ON_PAPER: CanvasPixel = [212, 209, 199, 255]
 // Flexoki tx-2 #6F6E69 at 70% alpha over bg #FFFCF0.
 const SCROLLBAR_HOVER_ON_PAPER: CanvasPixel = [154, 153, 146, 255]
-
 const waitForCondition = async (
   page: Page,
   predicate: () => Promise<boolean>,
   description: string,
-  attempts = 100,
+  timeout?: number,
 ): Promise<void> => {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await predicate()) return
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for ${description}`)
+  await waitForValue(
+    predicate,
+    (value) => value,
+    `timed out waiting for ${description}`,
+    timeout === undefined ? {} : { timeout },
+  )
 }
 
 const canvasBox = async (page: Page) => {
@@ -89,17 +90,18 @@ const dropdownGeometry = async (page: Page): Promise<DropdownGeometry | null> =>
     return typeof raw === 'string' ? JSON.parse(raw) as DropdownGeometry : null
   })
 
+// 時間切れでも例外にせず null を返す。ドラッグ開始の再試行判定に使う。
 const tryResizeGeometry = async (
   page: Page,
   predicate: (geometry: ResizeGeometry) => boolean,
-  attempts: number,
+  timeout?: number,
 ): Promise<ResizeGeometry | null> => {
   let last: ResizeGeometry | null = null
   try {
     await waitForCondition(page, async () => {
       last = await resizeGeometry(page)
       return last !== null && predicate(last)
-    }, 'picker resize geometry', attempts)
+    }, 'picker resize geometry', timeout)
   } catch {
     return null
   }
@@ -111,7 +113,7 @@ const waitForResizeGeometry = async (
   predicate: (geometry: ResizeGeometry) => boolean = () => true,
   description = 'picker resize geometry',
 ): Promise<ResizeGeometry> => {
-  const geometry = await tryResizeGeometry(page, predicate, 100)
+  const geometry = await tryResizeGeometry(page, predicate)
   if (!geometry) throw new Error(`timed out waiting for ${description}`)
   return geometry
 }
@@ -202,7 +204,7 @@ const beginSeparatorDrag = async (page: Page, box: { x: number; y: number }, fro
     await page.mouse.move(box.x + from.x, box.y + from.y)
     await page.mouse.down()
     await page.mouse.move(box.x + from.x, box.y + from.y + 2, { steps: 2 })
-    if (await tryResizeGeometry(page, (geometry) => geometry.dragging, 20)) return
+    if (await tryResizeGeometry(page, (geometry) => geometry.dragging, 2_000)) return
     await page.mouse.up()
   }
   throw new Error('timed out waiting for resize drag start')

@@ -3,6 +3,8 @@ import {
   pixelRgbDistance,
   sampleCanvasPixels,
   waitForStartupReady,
+  pollForValue,
+  waitForValue,
   type CanvasPixel,
 } from './support/web-spec-helpers'
 
@@ -55,19 +57,21 @@ const snapshot = async (page: Page): Promise<CircuitLibrarySnapshot> => {
   })
   return JSON.parse(raw) as CircuitLibrarySnapshot
 }
-
 const waitForCondition = async (page: Page, predicate: () => Promise<boolean>, description: string): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      if (await predicate()) return
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('hook missing')) {
-        throw error
+  await waitForValue(
+    async () => {
+      try {
+        return await predicate()
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('hook missing')) {
+          throw error
+        }
+        return false
       }
-    }
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for ${description}`)
+    },
+    (value) => value,
+    `timed out waiting for ${description}`,
+  )
 }
 
 const seedLibrary = async (page: Page, activeId = 'two'): Promise<void> => {
@@ -101,12 +105,30 @@ const clickCanvas = async (page: Page, point: Point): Promise<void> => {
   await page.mouse.click(box.x + point.x, box.y + point.y)
 }
 
+// 押下と移動が同じフレームに入るとドラッグ開始を取りこぼすことがある
+// (CPU 飽和時に顕著)。開始を `item_dragging` で確かめ、始まっていなければやり直す。
+const itemDragging = async (page: Page): Promise<boolean> =>
+  page.evaluate(() => {
+    const raw = Reflect.get(window, '__qniCircuitPickerResizeGeometryJson')
+    return typeof raw === 'string' ? JSON.parse(raw).item_dragging === true : false
+  })
+
 const dragCanvas = async (page: Page, from: Point, to: Point): Promise<void> => {
   const box = await canvasBox(page)
-  await page.mouse.move(box.x + from.x, box.y + from.y)
-  await page.mouse.down()
-  await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 })
-  await page.mouse.up()
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.move(box.x + from.x, box.y + from.y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + from.x, box.y + from.y + 8, { steps: 3 })
+    const started = await pollForValue(() => itemDragging(page), (value) => value, { timeout: 2_000 })
+    if (!started) {
+      await page.mouse.up()
+      continue
+    }
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 })
+    await page.mouse.up()
+    return
+  }
+  throw new Error('timed out waiting for item drag to start')
 }
 
 const dragCanvasAndCancel = async (page: Page, from: Point, to: Point): Promise<void> => {

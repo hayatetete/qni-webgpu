@@ -2,6 +2,8 @@
 
 Local development backend for the web external GPU execution path.
 
+Python と Qiskit のバージョンは `pyproject.toml` で固定する。値の一覧は `docs/tech-stack.md` を参照する。
+
 ## Runners
 
 - `mock`: fixed histogram response and fixed ground-state Amplitude / Bloch / Probability / Density Matrix display payloads. No quantum simulation; useful for UI/API smoke tests.

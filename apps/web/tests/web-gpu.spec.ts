@@ -605,7 +605,7 @@ test('GPU bloch tip is purple at the equator for |+⟩', async ({ page }) => {
   const wireCenterY = EGUI_PANEL_MARGIN + LINE_Y
 
   // H|0⟩ = |+⟩ → bloch (1, 0, 0), z = 0. The perspective projection in
-  // bloch_project (src/gpu/shaders/bloch_display.rs) puts the equator tip at
+  // bloch_project (src/gpu/shaders/bloch_overlay.wgsl) puts the equator tip at
   // local (-6.33, +6.33) from the sphere center, i.e. down-left of center, where
   // the gradient midpoint is painted purple-400.
   const samples = await sampleCanvasPixels(page, canvas, [

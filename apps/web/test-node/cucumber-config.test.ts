@@ -11,6 +11,11 @@ const supportDir = path.join(rootDir, 'features', 'support')
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const CUCUMBER_SMOKE_TIMEOUT_MS = 20_000
 type MutableRecord = Record<string, any>
+type HookOptionsStub = { timeout: number }
+type ScenarioHookCallback = (
+  this: MutableRecord,
+  argument: { pickle?: { name?: string }; result?: { status: string } },
+) => Promise<void> | void
 
 const readPackageJson = async () => {
   const packageJsonPath = path.join(rootDir, 'package.json')
@@ -190,6 +195,13 @@ test('cucumber config uses bounded scenario parallelism on CI', () => {
   assert.equal(config.parallel, 2)
 })
 
+// 起動固まりは Chrome / Dawn 側の待ちで解消できないため 1 回だけ再試行する。
+test('cucumber config retries a failing scenario exactly once', () => {
+  const config = loadCucumberConfig()
+
+  assert.equal(config.retry, 1)
+})
+
 test('support modules expose explicit registration hooks without runtime message sniffing', async () => {
   const hooks = require('../features/support/hooks.ts')
   const world = require('../features/support/world.ts')
@@ -217,7 +229,7 @@ test('support modules expose explicit registration hooks without runtime message
   })
 })
 
-test('support hooks keep shared server lifecycle at run scope while resetting browser state per scenario', async () => {
+test('support hooks verify the shared server per scenario while resetting browser state', async () => {
   const hooks = require('../features/support/hooks.ts')
   const registrations: MutableRecord = {}
   const calls: string[] = []
@@ -227,7 +239,8 @@ test('support hooks keep shared server lifecycle at run scope while resetting br
       registrations.beforeAllOptions = options
       registrations.beforeAll = callback
     },
-    Before: (callback: any) => {
+    Before: (options: HookOptionsStub, callback: ScenarioHookCallback) => {
+      registrations.beforeOptions = options
       registrations.before = callback
     },
     After: (callback: any) => {
@@ -259,6 +272,7 @@ test('support hooks keep shared server lifecycle at run scope while resetting br
     after: typeof registrations.after,
     afterAll: typeof registrations.afterAll,
     beforeAllOptions: registrations.beforeAllOptions,
+    beforeOptions: registrations.beforeOptions,
     afterAllOptions: registrations.afterAllOptions,
   }
 
@@ -290,10 +304,18 @@ test('support hooks keep shared server lifecycle at run scope while resetting br
       after: 'function',
       afterAll: 'function',
       beforeAllOptions: { timeout: 123_456 },
+      beforeOptions: { timeout: 123_456 },
       afterAllOptions: { timeout: 123_456 },
     },
     baseUrl: 'http://127.0.0.1:4174',
-    calls: ['ensure-server', 'start:smoke scenario', 'close-browser', 'reset-world', 'shutdown-server'],
+    calls: [
+      'ensure-server',
+      'ensure-server',
+      'start:smoke scenario',
+      'close-browser',
+      'reset-world',
+      'shutdown-server',
+    ],
   })
 })
 

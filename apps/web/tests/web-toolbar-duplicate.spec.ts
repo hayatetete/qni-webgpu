@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { waitForStartupReady } from './support/web-spec-helpers'
+import { waitForStartupReady, waitForValue } from './support/web-spec-helpers'
 
 type CircuitLibrarySnapshot = {
   entries: Array<{ id: string; name: string; circuit_json: string; updated_at: number }>
@@ -26,12 +26,16 @@ const snapshot = async (page: Page): Promise<CircuitLibrarySnapshot> => {
 }
 
 const duplicateGeometry = async (page: Page): Promise<ToolbarDuplicateGeometry> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const raw = await page.evaluate(() => (window as any).__qniToolbarDuplicateGeometryJson)
-    if (typeof raw === 'string') return JSON.parse(raw) as ToolbarDuplicateGeometry
-    await page.waitForTimeout(50)
-  }
-  throw new Error('toolbar Duplicate geometry was not published')
+  const geometry = await waitForValue(
+    async () => {
+      const raw = await page.evaluate(() => (window as any).__qniToolbarDuplicateGeometryJson)
+      return typeof raw === 'string' ? (JSON.parse(raw) as ToolbarDuplicateGeometry) : null
+    },
+    (value) => value !== null,
+    'toolbar Duplicate geometry was not published',
+  )
+  if (!geometry) throw new Error('toolbar Duplicate geometry missing')
+  return geometry
 }
 
 const waitForSnapshot = async (
@@ -39,18 +43,22 @@ const waitForSnapshot = async (
   predicate: (state: CircuitLibrarySnapshot) => boolean,
   description: string,
 ): Promise<CircuitLibrarySnapshot> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      const state = await snapshot(page)
-      if (predicate(state)) return state
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('__qniCircuitPickerSnapshot hook missing')) {
-        throw error
+  const state = await waitForValue(
+    async () => {
+      try {
+        return await snapshot(page)
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('__qniCircuitPickerSnapshot hook missing')) {
+          throw error
+        }
+        return null
       }
-    }
-    await page.waitForTimeout(50)
-  }
-  throw new Error(`timed out waiting for circuit picker snapshot: ${description}`)
+    },
+    (value) => value !== null && predicate(value),
+    `timed out waiting for circuit picker snapshot: ${description}`,
+  )
+  if (!state) throw new Error('circuit picker snapshot missing')
+  return state
 }
 
 const canvasBox = async (page: Page) => {
@@ -136,12 +144,11 @@ test('toolbar Duplicate exposes the Duplicate circuit tooltip on hover', async (
   await page.locator('#egui-canvas').hover({ position: point })
   await page.waitForTimeout(200)
 
-  let tooltip: string | undefined
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    tooltip = await page.evaluate(() => (window as any).__qniToolbarTooltipText)
-    if (tooltip === 'Duplicate circuit') break
-    await page.waitForTimeout(50)
-  }
+  const tooltip = await waitForValue(
+    () => page.evaluate(() => (window as any).__qniToolbarTooltipText),
+    (value) => value === 'Duplicate circuit',
+    'timed out waiting for Duplicate circuit tooltip',
+  )
   const geometry = await duplicateGeometry(page)
   expect({ tooltip, hovered: geometry.hovered }).toEqual({ tooltip: 'Duplicate circuit', hovered: true })
 })

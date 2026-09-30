@@ -37,7 +37,7 @@ pub(crate) fn draw_aspect_popover(
     painter.rect_stroke(
         rect,
         corner,
-        egui::Stroke::new(1.0, colors.line), // Flexoki ui-2.
+        egui::Stroke::new(1.0_f32, colors.line), // Flexoki ui-2.
         egui::StrokeKind::Inside,
     );
 

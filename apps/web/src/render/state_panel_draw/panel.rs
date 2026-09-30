@@ -39,7 +39,7 @@ pub(super) fn paint_capacity_error(
     painter.rect_stroke(
         card,
         egui::CornerRadius::same(12), // rounded-xl = 12px.
-        egui::Stroke::new(1.0, colors.semantic_off), // Flexoki red-600.
+        egui::Stroke::new(1.0_f32, colors.semantic_off), // Flexoki red-600.
         egui::StrokeKind::Outside,
     );
     painter.text(

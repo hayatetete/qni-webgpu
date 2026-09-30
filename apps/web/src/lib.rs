@@ -36,12 +36,16 @@ pub async fn start(canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
         .ok_or_else(|| wasm_bindgen::JsValue::from_str("canvas not found"))?
         .dyn_into::<web_sys::HtmlCanvasElement>()?;
 
+    crate::test_hooks::set_startup_stage("runner-start");
     let web_options = eframe::WebOptions::default();
     eframe::WebRunner::new()
         .start(
             canvas,
             web_options,
-            Box::new(|cc| Ok(Box::new(QniApp::new(cc)))),
+            Box::new(|cc| {
+                crate::test_hooks::set_startup_stage("app-new");
+                Ok(Box::new(QniApp::new(cc)))
+            }),
         )
         .await
 }
