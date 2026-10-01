@@ -133,12 +133,21 @@ const dragCanvas = async (page: Page, from: Point, to: Point): Promise<void> => 
 
 const dragCanvasAndCancel = async (page: Page, from: Point, to: Point): Promise<void> => {
   const box = await canvasBox(page)
-  await page.mouse.move(box.x + from.x, box.y + from.y)
-  await page.mouse.down()
-  await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 })
-  await page.keyboard.press('Escape')
-  await page.mouse.move(box.x + to.x, box.y + to.y - 24, { steps: 4 })
-  await page.mouse.up()
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.move(box.x + from.x, box.y + from.y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + from.x, box.y + from.y + 8, { steps: 3 })
+    const started = await pollForValue(() => itemDragging(page), (value) => value, { timeout: 2_000 })
+    if (!started) {
+      await page.mouse.up()
+      continue
+    }
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 })
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    return
+  }
+  throw new Error('timed out waiting for item drag to start before cancel')
 }
 
 const entryIds = async (page: Page): Promise<string[]> => (await snapshot(page)).entries.map((entry) => entry.id)
@@ -337,6 +346,7 @@ test('submenu top edge aligns to the parent row on right and flipped anchors', a
   await page.evaluate(() => {
     const global = window as any
     global.__qniCircuitPickerGeometryJson = undefined
+    global.__qniCircuitPickerDropdownGeometryJson = undefined
   })
   await page.setViewportSize({ width: 380, height: 800 })
   await waitForCondition(page, async () => (await pickerDropdownGeometry(page)) !== null, 'flipped picker dropdown geometry')

@@ -546,7 +546,11 @@ impl super::QniApp {
     }
 
     pub(crate) fn handle_circuit_edit_shortcuts(&mut self, ctx: &eframe::egui::Context) {
-        if ctx.wants_keyboard_input() || self.library.active_locked() || self.shortcut_help_open {
+        if ctx.wants_keyboard_input()
+            || self.library.active_locked()
+            || self.shortcut_help_open
+            || self.picker.is_open()
+        {
             return;
         }
         let (select_all, copy, cut, paste, undo, redo, delete, escape) = ctx.input_mut(|input| {
@@ -571,6 +575,15 @@ impl super::QniApp {
                 input.consume_key(eframe::egui::Modifiers::NONE, eframe::egui::Key::Escape),
             )
         });
+        if escape {
+            self.selected_gate_ids.clear();
+            self.active_cell = None;
+            self.copy_flash = None;
+            self.selection_drag = None;
+            self.gate_click_selection = None;
+            ctx.request_repaint();
+            return;
+        }
         if select_all {
             self.select_all_gates();
         }
@@ -592,14 +605,6 @@ impl super::QniApp {
         }
         if delete {
             self.delete_selected_gates(ctx, false);
-        }
-        if escape {
-            self.selected_gate_ids.clear();
-            self.active_cell = None;
-            self.copy_flash = None;
-            self.selection_drag = None;
-            self.gate_click_selection = None;
-            ctx.request_repaint();
         }
     }
 
