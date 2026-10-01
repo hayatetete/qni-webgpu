@@ -125,6 +125,31 @@ test('paste preview draws a ghost wire for a future qubit', async ({ page }) => 
   await expect(page.locator('#egui-canvas')).toHaveScreenshot('paste-future-wire.png')
 })
 
+const capacityErrorCircuit = '{"cols":[[1,1,1,1,1,1,1,1,1,1,1,1,1,1,"•","X"]]}'
+
+const triggerPasteCapacityError = async (page: Page): Promise<string> => {
+  await page.setViewportSize({ width: 1000, height: 1400 })
+  await openCircuit(page, capacityErrorCircuit)
+  await clickGate(page, 0, 14)
+  await pressShortcut(page, 'Control+C')
+  const anchor = await circuitCellPoint(page, 1, 15)
+  await page.mouse.click(anchor.x, anchor.y)
+  await pressShortcut(page, 'Control+V')
+  return circuitJsonFromUrl(page.url())
+}
+
+test('paste beyond the local qubit capacity shows an error notification', async ({ page }) => {
+  await triggerPasteCapacityError(page)
+
+  await expect(page.locator('#egui-canvas')).toHaveScreenshot('paste-capacity-error.png')
+})
+
+test('paste beyond the local qubit capacity leaves the circuit unchanged', async ({ page }) => {
+  const circuitJson = await triggerPasteCapacityError(page)
+
+  expect(circuitJson).toBe(capacityErrorCircuit)
+})
+
 test('copying either side of a CNOT preserves the controlled structure', async ({ page }) => {
   await openCircuit(page, '{"cols":[["•",1,"X"]]}')
   await clickGate(page, 0, 2)

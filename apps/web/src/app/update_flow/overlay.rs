@@ -89,8 +89,58 @@ impl QniApp {
             );
         }
 
-        // Tooltip is drawn last so it sits on top of the drag preview / state
-        // panel / everything else in the overlay layer.
+        // Foreground feedback is drawn after circuit and state-panel overlays.
         self.draw_palette_tooltip(&overlay_painter, screen_rect, colors);
+        self.draw_paste_error_notice(ctx, screen_rect, colors);
+    }
+
+    fn draw_paste_error_notice(
+        &mut self,
+        ctx: &egui::Context,
+        screen_rect: egui::Rect,
+        colors: &Colors,
+    ) {
+        let now = now_seconds();
+        let Some(notice) = self.paste_error_notice.as_ref() else {
+            return;
+        };
+        let opacity = notice.opacity(now);
+        if opacity <= 0.0 {
+            self.paste_error_notice = None;
+            return;
+        }
+
+        if let Some(delay) = notice.remaining_hold(now) {
+            ctx.request_repaint_after(delay);
+        } else {
+            ctx.request_repaint();
+        }
+
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Tooltip,
+            egui::Id::new("paste-error-notice"),
+        ));
+        let text_color = colors.error_notice_text.gamma_multiply(opacity);
+        let galley = painter.layout_no_wrap(
+            notice.message().to_owned(),
+            egui::FontId::proportional(14.0), // text-sm = 14px.
+            text_color,
+        );
+        let size = galley.size() + egui::vec2(32.0, 16.0); // px-4 / py-2.
+        let rect = egui::Rect::from_center_size(
+            egui::pos2(
+                screen_rect.center().x,
+                screen_rect.bottom() - 24.0 - size.y / 2.0, // bottom-6 = 24px.
+            ),
+            size,
+        );
+        painter.rect(
+            rect,
+            egui::CornerRadius::same(8), // rounded-lg = 8px.
+            colors.error_notice_bg.gamma_multiply(opacity),
+            egui::Stroke::new(1.0_f32, colors.error_notice_border.gamma_multiply(opacity)),
+            egui::StrokeKind::Inside,
+        );
+        painter.galley(rect.center() - galley.size() / 2.0, galley, text_color);
     }
 }

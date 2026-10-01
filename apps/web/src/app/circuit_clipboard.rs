@@ -21,6 +21,41 @@ const PASTE_REVEAL_DELAY_SECS: f64 = CIRCUIT_MOTION_SECS + 0.03;
 const FLASH_OVERLAY_STRENGTH: f32 = 0.35;
 const CIRCUIT_MOTION_SECS: f64 = 0.12;
 const CIRCUIT_SCROLL_SECS: f64 = 0.18;
+const PASTE_ERROR_HOLD_SECS: f64 = 3.5;
+const PASTE_ERROR_FADE_SECS: f64 = 0.2;
+
+#[derive(Clone, Debug)]
+pub(crate) struct PasteErrorNotice {
+    message: String,
+    started_at: f64,
+}
+
+impl PasteErrorNotice {
+    fn qubit_capacity_exceeded(capacity: QubitCapacity, started_at: f64) -> Self {
+        Self {
+            message: format!("Cannot paste beyond {} qubits.", capacity.get()),
+            started_at,
+        }
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(crate) fn opacity(&self, now: f64) -> f32 {
+        let fade_elapsed = now - self.started_at - PASTE_ERROR_HOLD_SECS;
+        if fade_elapsed <= 0.0 {
+            1.0
+        } else {
+            (1.0 - fade_elapsed / PASTE_ERROR_FADE_SECS).clamp(0.0, 1.0) as f32
+        }
+    }
+
+    pub(crate) fn remaining_hold(&self, now: f64) -> Option<Duration> {
+        let remaining = self.started_at + PASTE_ERROR_HOLD_SECS - now;
+        (remaining > 0.0).then(|| Duration::from_secs_f64(remaining))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct CircuitMotion {
@@ -636,15 +671,28 @@ impl super::QniApp {
         let Some(insert_column) = anchor.column.checked_add(1) else {
             return;
         };
-        let Ok(next_gates) = paste_fragment(
+        let capacity = self.exec_mode.qubit_capacity();
+        let next_gates = match paste_fragment(
             &self.placed_gates,
             fragment,
             insert_column,
             anchor.wire,
-            self.exec_mode.qubit_capacity(),
+            capacity,
             &mut self.gate_ids,
-        ) else {
-            return;
+        ) {
+            Ok(gates) => gates,
+            Err(PasteFragmentError::QubitCapacityExceeded) => {
+                self.paste_error_notice = Some(PasteErrorNotice::qubit_capacity_exceeded(
+                    capacity,
+                    now_seconds(),
+                ));
+                ctx.request_repaint();
+                ctx.request_repaint_after(Duration::from_secs_f64(PASTE_ERROR_HOLD_SECS));
+                return;
+            }
+            Err(PasteFragmentError::ColumnOverflow | PasteFragmentError::InsertionSplitsGate) => {
+                return;
+            }
         };
         let pasted_gate_ids = next_gates[self.placed_gates.len()..]
             .iter()
