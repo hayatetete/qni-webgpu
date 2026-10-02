@@ -39,6 +39,7 @@ impl DragController {
 
                 if !on_circuit {
                     app.placed_gates.remove(index);
+                    app.selected_gate_ids.remove(&gate_id);
                 } else if let Some(snap) = snapped {
                     match snap {
                         CircuitSnap::Slot(snap) => {

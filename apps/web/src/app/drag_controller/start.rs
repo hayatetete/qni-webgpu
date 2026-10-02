@@ -53,6 +53,7 @@ impl DragController {
                 if app.library.active_locked() {
                     return false;
                 }
+                app.select_gate_for_copy(drag.id);
                 app.begin_circuit_commit();
                 app.dragging_live_snap = app.placed_gates.iter().find_map(|gate| {
                     (gate.id == drag.id).then_some(LiveDragSnap::Slot {

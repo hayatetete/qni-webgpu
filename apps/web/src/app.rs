@@ -1,6 +1,7 @@
 //! App root — `QniApp` state, initialization, and small accessors.
 //! Per-frame update order lives in `update_flow`.
 
+mod circuit_clipboard;
 mod circuit_history;
 pub(crate) mod circuit_library;
 mod circuit_model;
@@ -28,7 +29,7 @@ use circuit_history::CircuitRevision;
 use circuit_library::CircuitLibrary;
 use circuit_picker_state::PickerState;
 use eframe::egui;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 #[allow(unused_imports)]
 pub(crate) use circuit_model::{
@@ -53,6 +54,9 @@ pub(crate) struct QniApp {
     pub(crate) picker_overlay_rect: Option<egui::Rect>,
     gate_ids: GateIdAllocator,
     pub(crate) placed_gates: Vec<PlacedGate>,
+    pub(crate) selected_gate_ids: BTreeSet<GateId>,
+    circuit_clipboard: Option<circuit_clipboard::CircuitFragment>,
+    paste_anchor: Option<circuit_clipboard::CircuitCell>,
     /// Horizontal scroll offset for the circuit area, in egui pixels.
     /// When circuit content exceeds the canvas width, this pushes the
     /// rendered circuit left by that many pixels so the user can see
@@ -263,6 +267,9 @@ impl QniApp {
             picker_overlay_rect: None,
             gate_ids,
             placed_gates: initial_gates,
+            selected_gate_ids: BTreeSet::new(),
+            circuit_clipboard: None,
+            paste_anchor: None,
             circuit_scroll_x: 0.0,
             dragging: None,
             dragging_live_snap: None,

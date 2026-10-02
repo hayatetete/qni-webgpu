@@ -175,6 +175,8 @@ impl QniApp {
         let (gates, gate_ids) = crate::url_circuit::parse_circuit_json(json);
         self.placed_gates = gates;
         self.gate_ids = gate_ids;
+        self.selected_gate_ids.clear();
+        self.paste_anchor = None;
         if !self
             .exec_mode
             .qubit_capacity()
