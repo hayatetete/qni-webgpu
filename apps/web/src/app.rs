@@ -325,10 +325,15 @@ impl QniApp {
     fn layout_qubits(&self) -> usize {
         let capacity = self.exec_mode.qubit_capacity().get();
         let mut count = self.qubit_count.clamp(MIN_QUBITS, capacity);
+        if !self.library.active_locked() {
+            if let Some((anchor, (_, height))) = self.paste_preview() {
+                count = count.max(anchor.wire.as_usize().saturating_add(height));
+            }
+        }
         if self.dragging.is_some() && count < capacity {
             count += 1;
         }
-        count
+        count.min(capacity)
     }
 
     pub(crate) fn local_state_vector_active(&self) -> bool {

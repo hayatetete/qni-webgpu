@@ -12,11 +12,11 @@ mod start;
 
 use eframe::egui;
 
-use super::{CircuitColumnIndex, QniApp};
-use crate::constants::{LINE_GAP, PALETTE_ROW_Y, SLOT_SPACING};
+use super::{circuit_clipboard::CircuitCell, CircuitColumnIndex, QniApp, WireIndex};
+use crate::constants::{GATE_SIZE, LINE_GAP, PALETTE_ROW_Y, SLOT_SPACING};
 use crate::layout::{
-    layout_metrics, nearest_slot_index, palette_layout, palette_start_x, LayoutMetrics,
-    PaletteLayout,
+    layout_metrics, nearest_line, nearest_slot_index, palette_layout, palette_start_x,
+    LayoutMetrics, PaletteLayout,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -87,6 +87,19 @@ fn step_at_cursor(cursor: egui::Pos2, metrics: &LayoutMetrics) -> Option<Circuit
     } else {
         None
     }
+}
+
+fn circuit_cell_at_cursor(cursor: egui::Pos2, metrics: &LayoutMetrics) -> Option<CircuitCell> {
+    let (column, column_distance) = nearest_slot_index(cursor.x, &metrics.slot_centers)?;
+    let (_, wire_distance, wire) = nearest_line(cursor.y, &metrics.line_ys);
+    if column_distance > GATE_SIZE * 0.5 || wire_distance > GATE_SIZE * 0.5 {
+        return None;
+    }
+
+    Some(CircuitCell {
+        column: CircuitColumnIndex::new(column),
+        wire: WireIndex::new(wire),
+    })
 }
 
 fn reset_drag_frame_state(app: &mut QniApp) {

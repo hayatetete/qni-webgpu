@@ -1,6 +1,8 @@
 use eframe::egui;
 
-use super::{step_at_cursor, CircuitInputGeometry, DragController, DragPointer};
+use super::{
+    circuit_cell_at_cursor, step_at_cursor, CircuitInputGeometry, DragController, DragPointer,
+};
 use crate::app::{
     CircuitColumnIndex, DragState, LiveDragSnap, PlacedGate, QniApp, SpanResizeDrag, WireIndex,
 };
@@ -21,6 +23,7 @@ enum DragStartIntent {
         preview_pos: egui::Pos2,
     },
     BreakpointStep(CircuitColumnIndex),
+    EmptyCell(super::CircuitCell),
     None,
 }
 
@@ -121,6 +124,14 @@ impl DragController {
                 }
                 true
             }
+            DragStartIntent::EmptyCell(cell) => {
+                if app.library.active_locked() {
+                    return false;
+                }
+                app.select_empty_cell(cell);
+                ctx.request_repaint();
+                true
+            }
             DragStartIntent::None => false,
         }
     }
@@ -194,8 +205,12 @@ fn start_intent(
         }
     }
 
-    // No gate / palette under the cursor. If we're inside a step slot,
-    // lock the breakpoint to that column.
+    if let Some(cell) = circuit_cell_at_cursor(cursor, &geometry.metrics) {
+        return DragStartIntent::EmptyCell(cell);
+    }
+
+    // No gate / palette / empty cell under the cursor. If we're inside a step
+    // slot, lock the breakpoint to that column.
     step_at_cursor(cursor, &geometry.metrics)
         .map(DragStartIntent::BreakpointStep)
         .unwrap_or(DragStartIntent::None)

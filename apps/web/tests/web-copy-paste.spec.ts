@@ -98,3 +98,25 @@ test('Ctrl+X copies and removes the selected gate', async ({ page }) => {
     '{"cols":[["X"],["H"]]}',
   )
 })
+
+test('an empty cell can anchor a paste after cutting the only gate', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"]]}')
+  await clickGate(page, 0, 0)
+  await page.keyboard.press('Control+X')
+  await waitForCircuitJson(page, '{"cols":[]}')
+  await clickGate(page, 0, 0)
+  await page.keyboard.press('Control+V')
+
+  expect(await waitForCircuitJson(page, '{"cols":[[1],["H"]]}')).toBe(
+    '{"cols":[[1],["H"]]}',
+  )
+})
+
+test('an empty paste anchor uses the selection frame', async ({ page }) => {
+  await openCircuit(page, '{"cols":[["H"],["X"]]}')
+  await clickGate(page, 0, 0)
+  await page.keyboard.press('Control+C')
+  await clickGate(page, 2, 0)
+
+  await expect(page.locator('#egui-canvas')).toHaveScreenshot('empty-paste-anchor.png')
+})

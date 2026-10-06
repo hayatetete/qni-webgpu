@@ -160,7 +160,8 @@ impl QniApp {
     /// recovered from pixels. Reserve one extra trailing slot as a drop-target
     /// landing zone (mirrors qni's `appendMinimumSteps`).
     pub(super) fn min_circuit_slots(&self) -> usize {
-        self.placed_gates
+        let placed_gate_slots = self
+            .placed_gates
             .iter()
             .filter_map(|gate| {
                 gate.column
@@ -169,7 +170,15 @@ impl QniApp {
                     .map(CircuitColumnIndex::as_usize)
             })
             .max()
-            .unwrap_or(0)
+            .unwrap_or(0);
+        let preview_slots = self
+            .paste_preview()
+            .filter(|_| !self.library.active_locked())
+            .and_then(|(cell, size)| cell.column.checked_add(1 + size.0))
+            .map(CircuitColumnIndex::as_usize)
+            .unwrap_or(0);
+
+        placed_gate_slots.max(preview_slots)
     }
 
     fn raw_required_qubit_count(&self) -> usize {
@@ -185,7 +194,7 @@ impl QniApp {
             .expect("required qubit count is clamped to at least one")
     }
 
-    pub(super) fn required_visible_wire_count(&self) -> usize {
+    pub(crate) fn required_visible_wire_count(&self) -> usize {
         self.required_qubit_count().get().max(MIN_QUBITS)
     }
 

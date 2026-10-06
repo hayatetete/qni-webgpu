@@ -9,6 +9,7 @@ use crate::constants::{CIRCUIT_PADDING, GATE_SIZE, LINE_GAP, LINE_Y, REM};
 use crate::layout::{nearest_slot_index, LayoutMetrics};
 
 const SLOT_CENTER_EPSILON: f32 = 0.5;
+const PASTE_GHOST_PADDING: f32 = 8.0; // Tailwind spacing-2.
 
 pub(super) fn gate_slot_index_for_render(
     gate: &PlacedGate,
@@ -53,10 +54,21 @@ impl QniApp {
         // label strip on the left and the GPU callback viewports stay
         // on `rect.min` so they don't track the scroll.
         let circuit_origin = rect.min - egui::vec2(scroll_x, 0.0);
-        for &line_y in &metrics.line_ys {
+        let placed_wire_count = self.required_visible_wire_count();
+        let preview_wire_count = self
+            .paste_preview()
+            .filter(|_| !self.library.active_locked())
+            .map(|(anchor, (_, height))| anchor.wire.as_usize().saturating_add(height))
+            .unwrap_or(placed_wire_count);
+        for (index, &line_y) in metrics.line_ys.iter().enumerate() {
             let start = circuit_origin + egui::vec2(metrics.line_left, line_y);
             let end = circuit_origin + egui::vec2(metrics.line_right, line_y);
-            painter.line_segment([start, end], egui::Stroke::new(2.0_f32, colors.line));
+            let line_color = if index >= placed_wire_count && index < preview_wire_count {
+                with_alpha(colors.line, 80)
+            } else {
+                colors.line
+            };
+            painter.line_segment([start, end], egui::Stroke::new(2.0_f32, line_color));
         }
 
         // Step-preview vertical bars at the right edge of the
@@ -93,6 +105,32 @@ impl QniApp {
             }
         }
 
+        if let Some((anchor, (width, height))) = self
+            .paste_preview()
+            .filter(|_| !self.library.active_locked())
+        {
+            let insert_column = anchor.column.as_usize().saturating_add(1);
+            if let (Some(&anchor_y), Some(&insert_x)) = (
+                metrics.line_ys.get(anchor.wire.as_usize()),
+                metrics.slot_centers.get(insert_column),
+            ) {
+                let preview = egui::Rect::from_min_size(
+                    circuit_origin
+                        + egui::vec2(insert_x - GATE_SIZE * 0.5, anchor_y - GATE_SIZE * 0.5),
+                    egui::vec2(
+                        GATE_SIZE + crate::constants::SLOT_SPACING * width.saturating_sub(1) as f32,
+                        GATE_SIZE + crate::constants::LINE_GAP * height.saturating_sub(1) as f32,
+                    ),
+                )
+                .expand(PASTE_GHOST_PADDING);
+                painter.rect_filled(
+                    preview,
+                    egui::CornerRadius::same(4),
+                    with_alpha(colors.semantic_on, 31),
+                );
+            }
+        }
+
         self.draw_circuit_connectors(painter, metrics, colors, circuit_origin, dragging_gate_id);
 
         self.draw_placed_circuit_gates(
@@ -105,12 +143,38 @@ impl QniApp {
 
         self.draw_circuit_gpu_overlays(painter, rect, circuit_origin, dragging_gate_id, colors);
 
+        if let Some(cell) = self
+            .selected_empty_cell()
+            .filter(|_| !self.library.active_locked())
+        {
+            if let (Some(&x), Some(&y)) = (
+                metrics.slot_centers.get(cell.column.as_usize()),
+                metrics.line_ys.get(cell.wire.as_usize()),
+            ) {
+                let cell_rect = egui::Rect::from_center_size(
+                    circuit_origin + egui::vec2(x, y),
+                    egui::Vec2::splat(GATE_SIZE),
+                );
+                painter.rect_stroke(
+                    cell_rect.expand(4.0),
+                    super::hover_frame::rounded_gate_hover_frame_corner_radius(),
+                    egui::Stroke::new(2.0_f32, colors.semantic_on),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+
         for (index, &line_y) in metrics.line_ys.iter().enumerate() {
             // Labels live in circuit space (anchored to the wire's
             // start) so they scroll with the rest of the circuit —
             // otherwise the leftmost gates would slide under fixed
             // "q0:" / "q1:" labels and visually collide.
             let label_pos = circuit_origin + egui::vec2(CIRCUIT_PADDING, line_y - 7.0);
+            let label_color = if index >= placed_wire_count && index < preview_wire_count {
+                with_alpha(colors.text, 80)
+            } else {
+                colors.text
+            };
             painter.text(
                 label_pos,
                 egui::Align2::LEFT_TOP,
@@ -118,7 +182,7 @@ impl QniApp {
                 // text-sm (14 px) — Tailwind. Monospace keeps q0:/q1: wire
                 // labels aligned with angle labels and state-panel numerals.
                 egui::FontId::monospace(14.0),
-                colors.text,
+                label_color,
             );
         }
     }

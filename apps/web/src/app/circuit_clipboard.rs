@@ -262,6 +262,17 @@ pub(crate) fn paste_fragment(
 }
 
 impl super::QniApp {
+    pub(crate) fn paste_preview(&self) -> Option<(CircuitCell, (usize, usize))> {
+        let cell = self.paste_anchor?;
+        let fragment = self.circuit_clipboard.as_ref()?;
+        Some((cell, (fragment.width, fragment.height)))
+    }
+
+    pub(crate) fn selected_empty_cell(&self) -> Option<CircuitCell> {
+        self.selected_gate_ids.is_empty().then_some(())?;
+        self.paste_anchor
+    }
+
     pub(crate) fn select_gate_for_copy(&mut self, gate_id: GateId) {
         let Some(gate) = self.placed_gates.iter().find(|gate| gate.id == gate_id) else {
             return;
@@ -274,6 +285,11 @@ impl super::QniApp {
         }
         self.selected_gate_ids = selection;
         self.paste_anchor = selection_paste_anchor(&self.placed_gates, &self.selected_gate_ids);
+    }
+
+    pub(crate) fn select_empty_cell(&mut self, cell: CircuitCell) {
+        self.selected_gate_ids.clear();
+        self.paste_anchor = Some(cell);
     }
 
     pub(crate) fn handle_copy_paste_shortcuts(&mut self, ctx: &eframe::egui::Context) {
